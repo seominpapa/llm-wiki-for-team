@@ -48,6 +48,11 @@ test("typed relations are the editable source of active graph edges", async (t) 
 `,
     "utf8",
   );
+  const outDir = path.join(projectRoot, "graphify-out");
+  await mkdir(outDir, { recursive: true });
+  for (const staleName of ["wiki-graph.json", "wiki-graph.html", "WIKI_GRAPH_REPORT.md"]) {
+    await writeFile(path.join(outDir, staleName), "stale", "utf8");
+  }
 
   execFileSync(process.execPath, [path.join(scriptsDir, "build-wiki-graph.mjs")], {
     cwd: projectRoot,
@@ -55,8 +60,14 @@ test("typed relations are the editable source of active graph edges", async (t) 
   });
 
   const graph = JSON.parse(
-    await readFile(path.join(projectRoot, "graphify-out", "wiki-graph.json"), "utf8"),
+    await readFile(path.join(outDir, "graph.json"), "utf8"),
   );
+  assert.equal(await exists(path.join(outDir, "graph.html")), true);
+  assert.equal(await exists(path.join(outDir, "GRAPH_REPORT.md")), true);
+  assert.equal(await exists(path.join(outDir, "wiki-graph.json")), false);
+  assert.equal(await exists(path.join(outDir, "wiki-graph.html")), false);
+  assert.equal(await exists(path.join(outDir, "WIKI_GRAPH_REPORT.md")), false);
+  assert.doesNotMatch(await readFile(path.join(outDir, "GRAPH_REPORT.md"), "utf8"), /wiki-graph|WIKI_GRAPH_REPORT/);
 
   assert.equal(graph.nodes.length, 2);
   assert.ok(graph.nodes.every((node) => node.path !== "llm-wiki/wiki/ontology/relations.md"));

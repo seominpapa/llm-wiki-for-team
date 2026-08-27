@@ -87,6 +87,11 @@ llm-wiki-for-team/
 │   │   └── ontology/
 │   └── outputs/
 ├── graphify-out/
+│   ├── graph.html                 # 사용자가 여는 지식 그래프
+│   ├── graph.json                 # 그래프 원본 데이터
+│   ├── GRAPH_REPORT.md            # 그래프 요약 보고서
+│   ├── cache/                     # Graphify 내부 캐시
+│   └── manifest.json              # 증분 처리 이력
 ├── ontology-editor.html              # 로컬 생성 파일
 ├── 지식관리-대시보드.html             # 로컬 생성 파일
 ├── 지식관리-대시보드.command          # macOS 실행기
@@ -212,7 +217,8 @@ RAG 답변, 문서 생성, 아이디어 검토는 결과 형식은 다르지만 
 | `python3 scripts/ingest-pdf-sources.py <폴더> --source-root sources` | PDF 변환본 생성 |
 | `node --test scripts/*.test.mjs` | Node 테스트 |
 | `python3 scripts/ingest-pdf-sources.test.py` | PDF 변환기 테스트 |
-| `graphify update . --force` | Graphify 분석 갱신 |
+
+`graphify-out/`에서 사용자가 직접 여는 파일은 `graph.html` 하나입니다. `cache/`와 `manifest.json`은 증분 처리용 내부 파일이므로 유지합니다.
 
 ## GitHub 공개 범위
 

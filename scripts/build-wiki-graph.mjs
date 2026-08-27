@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -380,8 +380,6 @@ ${fileList}
 ## 출력 파일
 - \`graphify-out/graph.json\`
 - \`graphify-out/graph.html\`
-- \`graphify-out/wiki-graph.json\`
-- \`graphify-out/wiki-graph.html\`
 - \`ontology-editor.html\`
 - \`지식관리-대시보드.html\`
 `;
@@ -779,12 +777,13 @@ function escapeHtml(value) {
 }
 
 await mkdir(outDir, { recursive: true });
-for (const name of ["graph.json", "wiki-graph.json"]) {
-  await writeFile(path.join(outDir, name), `${JSON.stringify(graph, null, 2)}\n`);
-}
-for (const name of ["graph.html", "wiki-graph.html"]) {
-  await writeFile(path.join(outDir, name), html);
-}
+await Promise.all(
+  ["wiki-graph.json", "wiki-graph.html", "WIKI_GRAPH_REPORT.md"].map((name) =>
+    rm(path.join(outDir, name), { force: true }),
+  ),
+);
+await writeFile(path.join(outDir, "graph.json"), `${JSON.stringify(graph, null, 2)}\n`);
+await writeFile(path.join(outDir, "graph.html"), html);
 await writeFile(
   path.join(root, "ontology-editor.html"),
   renderOntologyEditorHtml({
@@ -806,6 +805,5 @@ await writeFile(
   renderKnowledgeDashboardHtml(dashboardSnapshot),
 );
 await writeFile(path.join(outDir, "GRAPH_REPORT.md"), report);
-await writeFile(path.join(outDir, "WIKI_GRAPH_REPORT.md"), report);
 
 console.log(`Wrote ${graph.nodes.length} content file nodes and ${graph.edges.length} file-to-file edges (${typedEdgeCount} typed) from ${includedFiles.length} included llm-wiki Markdown files. Excluded ${excludedFiles.length} operational/meta files.`);

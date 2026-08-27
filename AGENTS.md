@@ -18,10 +18,10 @@
 - 목차나 운영 파일은 그래프 콘텐츠 노드로 보여주지 않는다. 시각 지식 그래프에서는 `llm-wiki/AGENTS.md`, `llm-wiki/wiki/index.md`, `llm-wiki/wiki/log.md`, `llm-wiki/wiki/ontology/relations.md`, raw manifest 파일을 제외한다.
 - HTML 지식 그래프는 파일 간 wiki link를 방향 화살표로 보여줘야 한다. `A -> B`는 `A.md`가 `B.md`로 해석되는 Obsidian 스타일 링크를 포함한다는 뜻이다. 양방향 링크는 양쪽 페이지가 서로 링크한다는 뜻이다.
 - 일반 `[[...]]` 링크는 탐색용 연결이고 `llm-wiki/wiki/ontology/relations.md`의 관계 목록은 의미가 정해진 typed relation의 단일 원본이다. typed relation은 `검토`, `확정`, `제외` 중 하나의 상태를 가져야 한다.
-- 로컬 HTML 그래프를 재생성할 때는 `node scripts/build-wiki-graph.mjs`를 우선 사용한다. 이 스크립트는 `graphify-out/graph.json`, `graphify-out/graph.html`, `graphify-out/wiki-graph.json`, `graphify-out/wiki-graph.html`과 프로젝트 루트의 `ontology-editor.html`, `지식관리-대시보드.html`을 생성하며, 한국어 UI label과 arrow marker를 포함한다. `검토`와 `확정` typed relation은 상태와 근거를 보존해 그래프에 넣고 `제외`는 활성 edge에서 뺀다.
+- 로컬 HTML 그래프를 재생성할 때는 `node scripts/build-wiki-graph.mjs`를 사용한다. 이 스크립트는 대표 산출물 `graphify-out/graph.json`, `graphify-out/graph.html`, `graphify-out/GRAPH_REPORT.md`와 프로젝트 루트의 `ontology-editor.html`, `지식관리-대시보드.html`을 생성하며, 이전 중복 별칭인 `wiki-graph.*`, `WIKI_GRAPH_REPORT.md`는 제거한다. `검토`와 `확정` typed relation은 상태와 근거를 보존해 그래프에 넣고 `제외`는 활성 edge에서 뺀다.
 - "X와 Y가 어떻게 연결되는가" 같은 cross-module 질문은 grep보다 `graphify query "<question>"`, `graphify path "<A>" "<B>"`, `graphify explain "<concept>"`를 우선 사용한다. 이 명령들은 단순 파일 검색이 아니라 EXTRACTED + INFERRED edge를 따라간다.
 - Windows에서 `graphify` 명령이 경로 문제로 실패하면 설치된 Python으로 `py -m graphify ...`를 사용한다.
-- `sources/`, `llm-wiki/wiki/`, `llm-wiki/outputs/`, Graphify 생성 스크립트처럼 사용자 지식 콘텐츠나 그래프 생성 규칙에 영향을 주는 파일을 수정한 뒤에는 `graphify update . --force`를 실행해 그래프를 최신 상태로 유지한다. 이 업데이트는 AST-only라 API 비용이 없다.
+- `sources/`, `llm-wiki/wiki/`, `llm-wiki/outputs/`, 그래프 생성 스크립트처럼 사용자 지식 콘텐츠나 그래프 생성 규칙에 영향을 주는 파일을 수정한 뒤에는 `node scripts/build-wiki-graph.mjs`를 실행한다. 이 프로젝트의 `graphify-out/`은 Wiki 그래프 전용이므로 일반 갱신에 `graphify update . --force`를 사용하지 않는다.
 - `README`, `AGENTS.md`, `.gitignore`처럼 운영 설명이나 에이전트 행동 규칙만 바꾸는 경우에는 사용자 지식 그래프 변경이 아니므로 Graphify 갱신을 생략한다.
 
 ### 온톨로지 관계 편집
