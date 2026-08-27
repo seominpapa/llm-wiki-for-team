@@ -1,0 +1,255 @@
+# 프로젝트 에이전트 운영 규칙
+
+이 프로젝트는 `sources/`에 사용자가 업무별로 구성한 원자료를 LLM Wiki로 정리하고, Graphify로 관계를 시각화한 뒤, 팀이 RAG 답변과 산출물에 활용하는 지식 작업공간이다.
+
+기본 응답과 작성물은 한국어로 작성한다. 제품명, 회사명, 라이브러리명, 명령어처럼 영어 표기가 자연스러운 항목은 원문을 유지한다.
+
+## Graphify 우선 규칙
+
+이 프로젝트에는 `graphify-out/`에 god node, community structure, cross-file relationship을 담은 지식 그래프가 생성될 수 있다.
+
+사용자가 `/graphify`를 입력하면 다른 작업보다 먼저 `skill` tool을 `skill: "graphify"`로 호출한다.
+
+규칙:
+
+- 소스 파일을 읽거나, grep/glob 검색을 하거나, 코드베이스/문서 구조 질문에 답하기 전에 항상 `graphify-out/GRAPH_REPORT.md`를 먼저 읽는다. 파일이 없으면 아직 그래프가 생성되지 않은 상태로 보고, 그 사실을 명시한 뒤 `readme.md`와 실제 폴더 구조를 확인한다.
+- `graphify-out/wiki/index.md`가 있으면 raw file을 바로 읽기보다 해당 wiki index를 먼저 탐색한다.
+- `llm-wiki/wiki/**/*.md` 내용은 기본적으로 한국어로 유지한다. H1 제목, 섹션 제목, 요약, 핵심 포인트, Obsidian 스타일 `[[...]]` 링크도 한국어를 우선한다.
+- 목차나 운영 파일은 그래프 콘텐츠 노드로 보여주지 않는다. 시각 지식 그래프에서는 `llm-wiki/AGENTS.md`, `llm-wiki/wiki/index.md`, `llm-wiki/wiki/log.md`, `llm-wiki/wiki/ontology/relations.md`, raw manifest 파일을 제외한다.
+- HTML 지식 그래프는 파일 간 wiki link를 방향 화살표로 보여줘야 한다. `A -> B`는 `A.md`가 `B.md`로 해석되는 Obsidian 스타일 링크를 포함한다는 뜻이다. 양방향 링크는 양쪽 페이지가 서로 링크한다는 뜻이다.
+- 일반 `[[...]]` 링크는 탐색용 연결이고 `llm-wiki/wiki/ontology/relations.md`의 관계 목록은 의미가 정해진 typed relation의 단일 원본이다. typed relation은 `검토`, `확정`, `제외` 중 하나의 상태를 가져야 한다.
+- 로컬 HTML 그래프를 재생성할 때는 `node scripts/build-wiki-graph.mjs`를 우선 사용한다. 이 스크립트는 `graphify-out/graph.json`, `graphify-out/graph.html`, `graphify-out/wiki-graph.json`, `graphify-out/wiki-graph.html`과 프로젝트 루트의 `ontology-editor.html`, `지식관리-대시보드.html`을 생성하며, 한국어 UI label과 arrow marker를 포함한다. `검토`와 `확정` typed relation은 상태와 근거를 보존해 그래프에 넣고 `제외`는 활성 edge에서 뺀다.
+- "X와 Y가 어떻게 연결되는가" 같은 cross-module 질문은 grep보다 `graphify query "<question>"`, `graphify path "<A>" "<B>"`, `graphify explain "<concept>"`를 우선 사용한다. 이 명령들은 단순 파일 검색이 아니라 EXTRACTED + INFERRED edge를 따라간다.
+- Windows에서 `graphify` 명령이 경로 문제로 실패하면 설치된 Python으로 `py -m graphify ...`를 사용한다.
+- `sources/`, `llm-wiki/wiki/`, `llm-wiki/outputs/`, Graphify 생성 스크립트처럼 사용자 지식 콘텐츠나 그래프 생성 규칙에 영향을 주는 파일을 수정한 뒤에는 `graphify update . --force`를 실행해 그래프를 최신 상태로 유지한다. 이 업데이트는 AST-only라 API 비용이 없다.
+- `README`, `AGENTS.md`, `.gitignore`처럼 운영 설명이나 에이전트 행동 규칙만 바꾸는 경우에는 사용자 지식 그래프 변경이 아니므로 Graphify 갱신을 생략한다.
+
+### 온톨로지 관계 편집
+
+- `llm-wiki/wiki/ontology/relations.md`가 관계 유형과 관계 목록의 기준 파일이다. 사용자가 관계 유형을 추가하거나 관계의 방향·근거·상태를 수정할 수 있다.
+- 프로젝트 루트의 `ontology-editor.html`은 외부 라이브러리나 서버 없이 더블클릭해 여는 standalone 편집기다. 생성 시점의 관계를 내장하며, 다른 `relations.md`를 불러오거나 수정본을 저장·다운로드할 수 있다.
+- standalone HTML은 브라우저 보안상 Node/Graphify 명령을 실행할 수 없으므로 저장 후 그래프를 자동 생성하지 않는다. 그래프까지 자동 반영하려면 프로젝트 루트에서 `node scripts/serve-ontology-editor.mjs`를 실행하고 `http://127.0.0.1:8766/`을 연다.
+- HTML에서 저장하면 `relations.md`를 검증해 원자적으로 저장하고 `node scripts/build-wiki-graph.mjs`를 자동 실행한다. 저장 충돌, 미등록 관계 유형, 잘못된 상태, 중복 관계가 있으면 원본을 덮어쓰지 않는다.
+- 자동 추출한 관계는 반드시 `검토`로 추가한다. 근거와 방향을 사용자가 확인한 경우에만 `확정`으로 바꾸며, 잘못된 관계는 삭제보다 `제외`로 남겨 재추출과 RAG 사용을 막는다.
+- 관계 객체는 가능하면 실제 wiki 문서의 H1과 일치하는 `[[객체명]]`으로 쓴다. 관계 유형의 `적용 분류`는 현재 `sources/` 바로 아래의 실제 업무 폴더명 또는 모든 분류를 뜻하는 `공통`을 사용한다. 기존 유형으로 의미를 표현할 수 없을 때만 새 유형을 추가한다.
+
+### 지식관리 대시보드와 공유 실행
+
+- macOS 사용자는 루트의 `지식관리-대시보드.command`, Windows 사용자는 `지식관리-대시보드.cmd`를 더블클릭한다.
+- launcher는 자신의 위치를 프로젝트 루트로 사용하므로 Google Drive 동기화 경로가 사용자마다 달라도 절대경로 수정이 필요 없다.
+- 필수 의존성은 Node.js뿐이다. Node.js가 없으면 macOS는 Homebrew 또는 Node.js 공식 서명 PKG, Windows는 winget 또는 Node.js 공식 서명 MSI로 LTS 설치를 시도한다. 다른 선택 의존성은 자동 설치하지 않는다.
+- 설치 과정에서 OS가 관리자 권한이나 UAC 승인을 요구하면 사용자가 직접 승인해야 한다. 설치가 거부되거나 네트워크가 차단되면 launcher는 원인을 표시하고 중단한다.
+- launcher는 그래프와 대시보드를 갱신하고 로컬 서버를 시작한 뒤 `/dashboard`를 연다. 이 모드에서는 `relations.md` 업로드가 필요 없으며 저장 후 그래프와 대시보드도 자동 갱신된다.
+- 대시보드는 `sources/` 바로 아래의 폴더를 실행 시점에 다시 탐색한다. `.` 또는 `_`로 시작하는 폴더는 원자료 분류에서 제외한다.
+- Google Drive 공유 권한이 있는 사용자는 동일 파일을 편집할 수 있지만 동시 저장은 충돌 파일을 만들 수 있다. 한 번에 한 명만 편집하고, 편집 전 대시보드를 다시 열어 최신 동기화본을 사용한다.
+
+## 질문 유형별 작업 방식
+
+### 로컬 HTML 목업과 인앱 브라우저 사용
+
+사용자가 HTML 목업, 로컬 웹 화면, `localhost`, `127.0.0.1`, 또는 인앱 브라우저 표시를 요청하면 다음 순서로 처리한다.
+
+1. Browser 플러그인이 사용 가능한 경우 먼저 Browser skill 지침을 확인하고 Codex 인앱 브라우저를 우선 사용한다.
+2. 단일 HTML 파일을 바로 보여줘야 하면 `file://`보다 로컬 정적 서버를 우선한다. Windows 환경에서는 다음 방식이 가장 단순하다.
+
+```powershell
+C:\Python314\python.exe -m http.server 8766 --bind 127.0.0.1
+```
+
+3. 서버는 HTML 파일이 있는 폴더에서 실행한다. 예를 들어 `llm-wiki/outputs/docs/mockups/pharma-sales-mockup.html`을 보여줄 때는 `llm-wiki/outputs/docs/mockups`를 working directory로 두고, URL은 `http://127.0.0.1:8766/pharma-sales-mockup.html` 형태로 안내한다.
+4. 백그라운드 서버가 샌드박스 안에서 바로 종료될 수 있으므로, 사용자가 실제로 봐야 하는 로컬 서버는 필요하면 승인 요청 후 샌드박스 밖에서 실행한다.
+5. URL을 안내하거나 브라우저에 열기 전에 반드시 `Invoke-WebRequest -UseBasicParsing <url>`로 `200 OK`와 응답 길이를 확인한다.
+6. 사용자가 이미 열어둔 포트가 죽어 있으면 새 포트를 안내하기보다 가능하면 같은 포트에서 서버를 다시 띄운 뒤 새로고침을 요청한다.
+7. 인앱 브라우저 자동화가 로컬 URL을 `ERR_BLOCKED_BY_CLIENT`, `ERR_CONNECTION_REFUSED`, 또는 Browser Use URL policy로 막으면 우회하지 않는다. 서버 상태, 포트, 바인딩 주소를 확인한 뒤에도 막히면 그 제한을 설명하고, 사용자의 승인 하에 기본 데스크톱 브라우저로 열거나 정적 이미지/스크린샷 대안을 제공한다.
+8. 로컬 HTML 목업은 제품 코드와 구분해 `llm-wiki/outputs/docs/mockups/`에 둔다. 장기 보존할 설계 산출물이 필요하면 `llm-wiki/outputs/docs/`에 별도 문서로 정리한다.
+
+### 프로젝트 구조나 현재 상태를 묻는 질문
+
+참고 순서:
+
+1. `graphify-out/GRAPH_REPORT.md`
+2. `graphify-out/wiki/index.md`가 있으면 해당 index
+3. `readme.md`
+4. 필요한 경우에만 관련 원본 파일
+
+응답 방식:
+
+- 그래프의 god node, community, surprising connection을 먼저 활용해 큰 지형을 설명한다.
+- 필요한 파일 경로는 절대 경로 링크로 제시한다.
+- 변경이 필요 없는 질문이면 파일을 수정하지 않는다.
+
+### 특정 개념, 기업, 시장, 기술 관계를 묻는 질문
+
+참고 순서:
+
+1. `graphify-out/GRAPH_REPORT.md`
+2. `llm-wiki/wiki/index.md`
+3. 관련 `llm-wiki/wiki/concepts/`, `entities/`, `sources/` 문서
+4. 관계형 질문이면 `graphify query`, `graphify explain`, `graphify path`
+
+활용 도구:
+
+- Graphify: 개념 간 연결, 핵심 노드, 경로 확인
+- LLM Wiki: 기존 요약, 출처, 개념 노트 확인
+
+성과물 저장:
+
+- 새 개념 정리가 필요하면 `llm-wiki/wiki/concepts/`에 저장한다.
+- 기업/인물/제품 정리가 필요하면 `llm-wiki/wiki/entities/`에 저장한다.
+- 원천 자료 요약이면 `llm-wiki/wiki/sources/`에 저장한다.
+- 변경했다면 `llm-wiki/wiki/index.md`와 `llm-wiki/wiki/log.md`도 함께 갱신한다.
+
+### RAG 기반 답변 요청
+
+다음 순서로 필요한 범위만 읽는다.
+
+1. `graphify-out/GRAPH_REPORT.md`: 전체 지형과 관련 노드 확인. 없으면 아직 그래프가 없다고 명시한다.
+2. `llm-wiki/wiki/index.md`: 관련 source, concept, entity, idea, decision 문서 찾기.
+3. `llm-wiki/wiki/ontology/relations.md`: 질문과 관련된 typed relation 중 상태가 `확정`인 행만 선택.
+4. 관련 `llm-wiki/wiki/decisions/`, `concepts/`, `entities/`: 결정과 정리된 개념 확인.
+5. 관련 `llm-wiki/wiki/sources/`: ingest된 원문별 Markdown과 인용 위치 확인.
+6. 필요한 경우 `sources/_generated/`: 원본 변환본으로 문맥과 표·수치 확인.
+7. 정확한 조문·페이지·수치 확인이 필요한 경우에만 관련 `sources/<업무 폴더>/` 원본 확인.
+
+답변 규칙:
+
+- 객체 간 관계를 사실이나 추론 근거로 사용할 때는 `relations.md`에서 상태가 `확정`인 관계만 사용한다.
+- `검토` 관계는 기본 RAG 답변에서 주장하거나 추론에 사용하지 않는다. 사용자가 관계 검토 자체를 요청한 경우에만 후보임을 분명히 표시해 별도로 제시한다.
+- `제외` 관계는 답변과 그래프의 활성 관계에서 사용하지 않는다.
+- 관계 상태와 별개로, 원문 또는 ingest 문서에서 직접 확인한 사실은 출처와 위치를 제시해 답변 근거로 사용할 수 있다. 확인되지 않은 typed relation으로 문서 사이를 연결해 추론해서는 안 된다.
+- 답변에는 사용한 wiki 문서와 원문 위치를 가능한 범위에서 함께 제시한다.
+
+### 자료 ingest 또는 원천 자료 정리를 요청한 경우
+
+참고 순서:
+
+1. `sources/`
+2. `llm-wiki/wiki/index.md`
+3. `llm-wiki/wiki/log.md`
+4. 기존 `llm-wiki/wiki/sources/`, `concepts/`, `entities/`, `ideas/`
+
+`sources/` 입력 구조:
+
+- `sources/` 바로 아래의 폴더는 사용자가 업무 특성에 맞게 자유롭게 구성한다.
+- 바로 아래 폴더명이 해당 자료의 `source_category`다. 숫자 접두어나 특정 산업 분류를 가정하지 않는다.
+- 각 업무 폴더 아래에는 하위 폴더를 자유롭게 둘 수 있다.
+- `sources/_generated/`는 원문 변환 Markdown 전용 예약 폴더이며 원자료 ingest 대상에서 제외한다.
+- `.` 또는 `_`로 시작하는 다른 폴더도 시스템·임시 폴더로 보고 자동 ingest 대상에서 제외한다.
+
+wiki ingest 요청 시 PDF 사전 처리:
+
+- 폴더 생성, 이동, 구조 확인만 요청받은 경우 ingest를 시작하지 않는다. 사용자가 명시적으로 ingest를 요청한 경우에만 원문 내용을 읽고 wiki를 갱신한다.
+- 원본을 Markdown으로 변환하기 전에 항상 `templates/source-markdown.md`를 읽고, 모든 분류에 동일한 기본 구조를 적용한다. 해당하지 않는 필드는 `확인 불가`로 남기고 추정해서 채우지 않는다.
+- 사용자가 wiki ingest를 요청하면 먼저 `sources/`의 현재 바로 아래 폴더 목록을 읽고, 사용자가 지정한 범위가 있으면 그 폴더만 재귀적으로 확인한다. 범위가 없으면 예약 폴더를 제외한 모든 업무 폴더를 확인한다.
+- 각 PDF마다 `sources/_generated/`에 이미 대응되는 Markdown 변환본이나 요약본이 있는지 확인한다. 파일명 stem, 제목, 또는 변환본의 `source`/`source_file` 메타데이터로 같은 원본임을 판단한다.
+- 대응되는 Markdown이 없고 PDF 변환이 필요하면 원본 PDF는 수정하지 않고 `sources/_generated/` 아래에 원본 분류를 알 수 있는 Markdown 변환본을 생성한다.
+- 변환본에는 `templates/source-markdown.md`에 정의된 메타데이터, 원문 구조, 페이지 경계, 핵심 요약, 주요 기준·수치·요건, 추출 메모를 가능한 범위에서 포함한다.
+- 변환본 파일명은 `YYYY-MM-DD_분류_제목.md`를 우선 사용하고, 제목이나 날짜를 알 수 없으면 PDF 파일명과 작업일을 사용한다.
+- 이미 변환본이 있으면 덮어쓰지 않는다. 내용 갱신이 필요해 보이면 사용자에게 확인하거나 별도 새 파일로 저장한다.
+- PDF 사전 처리가 끝난 뒤 사용자가 지정한 업무 폴더와 `sources/_generated/`의 대응 Markdown을 LLM Wiki ingest 대상으로 삼는다.
+- ingest한 원문별 Markdown 지식 노트는 `llm-wiki/wiki/sources/`에 저장한다. 원본 변환본만 `sources/_generated/`에 둔다.
+- ingest 중 발견한 객체 관계는 `templates/source-markdown.md`의 표 형식으로 추출하고 `llm-wiki/wiki/ontology/relations.md`의 관계 목록에 중복 없이 합친다. 자동 추출 상태는 항상 `검토`다.
+- 문서 성격이 법률·시행령·시행규칙·고시·지침이면 위임, 구체화, 개정, 폐지·대체, 예외, 적용, 요구, 금지, 허용, 참조 관계의 방향과 근거 조문을 우선 기록한다. 다른 업무 자료는 실제 내용에 맞는 관계 유형을 사용한다.
+
+활용 도구:
+
+- LLM Wiki 또는 `llm-wiki-ideation`: 원자료를 wiki note로 변환하고 cross-link 생성
+- Graphify: ingest 이후 관계 그래프 갱신
+
+성과물 저장:
+
+- PDF 원본을 Markdown으로 변환해달라는 요청이면 원본 PDF는 수정하지 않고 변환본을 `sources/_generated/`에 저장한다.
+- 사용자 정의 업무 분류 자료와 생성 Markdown의 wiki 요약은 `llm-wiki/wiki/sources/`에 저장한다.
+- 반복 등장하는 주제는 `llm-wiki/wiki/concepts/`에 저장한다.
+- 회사, 제품, 인물, 조직은 `llm-wiki/wiki/entities/`에 저장한다.
+- 판단이나 선택 근거는 `llm-wiki/wiki/decisions/`에 저장한다.
+- 객체 간 typed relation은 `llm-wiki/wiki/ontology/relations.md`에 저장하고 일반 본문 링크와 구분한다.
+- 원자료 자체는 `sources/`에서 수정하지 않는다. 단, PDF 변환 요청의 결과물은 원본과 구분해 `sources/_generated/`에 새 Markdown 파일로 저장할 수 있다.
+
+### 아이디어, 기획, 전략, 사업화 질문
+
+참고 순서:
+
+1. `graphify-out/GRAPH_REPORT.md`
+2. `llm-wiki/wiki/index.md`
+3. 관련 `concepts/`, `entities/`, `ideas/`, `decisions/`
+4. 필요하면 `graphify query "<아이디어와 관련된 질문>"`
+
+아이디어를 받을 때의 기본 참조 방식:
+
+- 첫 참조 파일은 항상 `graphify-out/GRAPH_REPORT.md`다. 전체 지식 지도를 보고 god node, 많이 연결된 파일, 관련 커뮤니티를 먼저 확인한다.
+- 다음으로 `llm-wiki/wiki/index.md`를 읽어 관련 concept, entity, idea, decision 문서를 찾는다.
+- AI 에이전트 관련 아이디어라면 우선 `llm-wiki/wiki/concepts/enterprise-ai-agent-adoption.md`, `llm-wiki/wiki/concepts/ai-agent-selection-checklist.md`, `llm-wiki/wiki/concepts/ai-agent-market-map.md`를 확인한다.
+- 이미 유사한 아이디어가 있으면 `llm-wiki/wiki/ideas/`의 기존 아이디어 문서를 먼저 읽고, 새 아이디어를 기존 노트와 연결한다.
+- wiki만으로 근거가 부족하거나 출처 확인이 필요하면 `llm-wiki/wiki/sources/`와 `sources/` 원자료를 확인한다.
+
+관련 내용이 없을 때의 처리:
+
+- `GRAPH_REPORT.md`, `index.md`, 관련 wiki 폴더에서 유사 노트를 찾지 못하면 "현재 wiki에는 직접 관련된 기존 문서가 없다"고 명시한다.
+- 이 경우에도 작업을 멈추지 않고 사용자 아이디어 자체를 1차 원문으로 삼아 문제, 대상 사용자, 가정, 검증 질문, 첫 실험을 정리한다.
+- 새 아이디어로 재사용할 가치가 있으면 `llm-wiki/wiki/ideas/`에 새 노트를 만들고, 개념 정리가 필요하면 `llm-wiki/wiki/concepts/`에 새 노트를 만든다.
+- 사실 확인이나 시장/기업 근거가 필요한데 로컬 자료가 없으면 사용자에게 원자료 추가를 요청하거나, 최신 정보가 필요한 경우 웹 검색을 통해 확인한다.
+- 새 노트를 만들거나 wiki 구조가 바뀌면 `llm-wiki/wiki/index.md`, `llm-wiki/wiki/log.md`를 갱신하고 Graphify를 다시 갱신한다.
+
+활용 도구:
+
+- LLM Wiki: 기존 지식과 아이디어를 연결
+- Graphify: 관련 개념, 근거 문서, 기존 아이디어의 연결 관계 확인
+
+성과물 저장:
+
+- 아이디어 노트는 `llm-wiki/wiki/ideas/`에 저장한다.
+- 의사결정이 생기면 `llm-wiki/wiki/decisions/`에 저장한다.
+- 실행 가능한 문서 초안은 `llm-wiki/outputs/docs/`에 저장한다.
+- 발표 자료 초안은 `llm-wiki/outputs/slides/`에 저장한다.
+- 자동화 코드나 Apps Script 산출물은 `llm-wiki/outputs/apps-script/`에 저장한다.
+
+### 실행계획, PoC, 구현, 자동화 요청
+
+참고 순서:
+
+1. 관련 wiki idea, decision, concept 문서
+2. 기존 `llm-wiki/outputs/docs/` 산출물
+3. 실제 코드나 스크립트가 있으면 `scripts/` 및 관련 파일
+
+활용 도구:
+
+- LLM Wiki: 관련 요구사항, 근거, 기존 결정을 확인
+- 구현 단계가 여러 개인 경우 실행계획을 먼저 작성한다.
+- 코드 변경이나 자동화 로직 구현은 테스트를 우선하고, 완료라고 말하기 전에 결과를 검증한다.
+- PoC의 핵심 가정, 리스크, 반론을 문서에 명시한다.
+
+성과물 저장:
+
+- 설계서, 실행계획, 운영 문서는 `llm-wiki/outputs/docs/`에 저장한다.
+- 코드 산출물은 성격에 따라 `scripts/` 또는 `llm-wiki/outputs/apps-script/`에 저장한다.
+- 작업 결과가 wiki 지식 구조에 영향을 주면 관련 `ideas/`, `decisions/`, `concepts/` 문서를 갱신한다.
+
+### 문서, 보고서, 발표자료 요청
+
+참고 순서:
+
+1. `llm-wiki/wiki/index.md`
+2. 관련 source/concept/entity/idea/decision 문서
+3. Graphify의 핵심 노드와 연결 관계
+
+활용 도구:
+
+- LLM Wiki: 근거 자료와 연결 구조 확보
+- Graphify: 핵심 노드와 문서 간 관계 확인
+- 대상 독자, 목적, 구조, 톤을 먼저 정리한다.
+
+성과물 저장:
+
+- 보고서/제안서/기획서는 `llm-wiki/outputs/docs/`에 저장한다.
+- 발표자료 초안이나 slide outline은 `llm-wiki/outputs/slides/`에 저장한다.
+- 산출물 상단에는 목적, 대상 독자, 사용한 주요 wiki 문서, 작성일을 적는다.
+
+## 성과물 저장 원칙
+
+- 사용자가 저장 위치를 명시하면 그 위치를 우선한다.
+- 사용자가 위치를 명시하지 않으면 위의 질문 유형별 기본 위치에 저장한다.
+- `sources/`, `llm-wiki/`, `graphify-out/`의 실제 내용은 개인 작업물로 보고 GitHub에 올리지 않는다. 폴더 구조 유지를 위한 `.gitkeep`만 추적한다.
+- 모든 wiki 문서는 Obsidian에서 탐색하기 쉽게 `[[...]]` 링크를 적극 사용한다.
+- 새 문서를 만들거나 기존 wiki 구조를 바꾸면 `llm-wiki/wiki/index.md`와 `llm-wiki/wiki/log.md`를 갱신한다.
+- 작업 완료 전에는 필요한 검증 명령을 실행하고, 실행하지 못한 검증은 이유를 명확히 말한다.

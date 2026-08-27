@@ -1,0 +1,203 @@
+# LLM Wiki for Team
+
+팀의 원자료를 Markdown Wiki로 정리하고, 검토 가능한 온톨로지 관계와 로컬 지식 그래프를 만들어 RAG 답변에 활용하는 작업공간입니다.
+
+원본 자료와 생성된 Wiki·그래프는 로컬 또는 팀 공유 드라이브에만 보관합니다. GitHub에는 재사용 가능한 규칙, 템플릿, 스크립트와 빈 폴더 구조만 저장합니다.
+
+## 처리 흐름
+
+```text
+sources/의 사용자 정의 업무 폴더
+  → templates/source-markdown.md 형식으로 원문 Markdown 변환
+  → sources/_generated/에 변환본 저장
+  → llm-wiki/wiki/에 ingest
+  → ontology/relations.md에서 관계 검토·확정
+  → graphify-out/ 지식 그래프 생성
+  → 원문 근거와 확정 관계를 사용한 RAG 답변
+```
+
+핵심 원칙:
+
+- 원본 파일은 수정하지 않습니다.
+- ingest는 사용자가 명시한 범위에서만 실행합니다.
+- 자동 추출 관계는 항상 `검토`로 시작합니다.
+- RAG 관계 추론에는 `확정` 관계만 사용합니다.
+- `제외` 관계는 답변과 활성 그래프에서 사용하지 않습니다.
+
+## sources 폴더를 업무에 맞게 구성하기
+
+새 저장소의 `sources/`는 비어 있습니다. 사용자가 업무에서 실제로 사용하는 분류를 바로 아래 폴더로 만드세요.
+
+예시:
+
+```text
+sources/
+├── 고객 계약서/
+│   ├── 국내/
+│   └── 해외/
+├── 제품 매뉴얼/
+├── 회의록/
+├── 시장 조사/
+└── _generated/          # 시스템이 만드는 원문 변환 Markdown
+```
+
+다른 업무 예시:
+
+- 법무팀: `계약서`, `법률`, `판례`, `내부 규정`
+- 기술팀: `요구사항`, `설계 문서`, `매뉴얼`, `시험 보고서`
+- 영업팀: `고객 자료`, `제안서`, `시장 조사`, `미팅 기록`
+- 연구팀: `논문`, `실험 기록`, `데이터 설명`, `외부 기준`
+
+폴더 규칙:
+
+1. `sources/` 바로 아래 폴더명이 `source_category`가 됩니다.
+2. 각 분류 안에는 필요한 만큼 하위 폴더를 만들 수 있습니다.
+3. `_generated/`는 변환본 저장용 예약 폴더이며 ingest 원본 검색에서 제외됩니다.
+4. `.` 또는 `_`로 시작하는 폴더는 시스템·임시 폴더로 보고 자동 분류에서 제외합니다.
+5. 분류명을 바꾸려면 ingest 전에 바꾸는 것이 안전합니다. ingest 후 이름을 바꾸면 기존 Markdown의 `source_category`와 `source_file`도 함께 갱신해야 합니다.
+6. 원자료는 GitHub에 올라가지 않습니다. 팀 공유가 필요하면 Google Drive, 사내 파일 서버 등 별도 저장소를 사용하세요.
+
+AI agent는 ingest를 시작할 때 현재 `sources/` 폴더 구조를 다시 읽고, 실제 존재하는 분류만 사용합니다. 특정 산업이나 번호 체계를 강제하지 않습니다.
+
+## 폴더 구조
+
+```text
+llm-wiki-for-team/
+├── AGENTS.md
+├── readme.md
+├── templates/
+│   └── source-markdown.md
+├── scripts/
+│   ├── ingest-pdf-sources.py
+│   ├── build-wiki-graph.mjs
+│   ├── serve-ontology-editor.mjs
+│   ├── lib/
+│   └── *.test.*
+├── sources/
+│   └── .gitkeep
+├── llm-wiki/
+│   ├── raw/
+│   ├── wiki/
+│   │   ├── sources/
+│   │   ├── concepts/
+│   │   ├── entities/
+│   │   ├── ideas/
+│   │   ├── decisions/
+│   │   └── ontology/
+│   └── outputs/
+├── graphify-out/
+├── ontology-editor.html              # 로컬 생성 파일
+├── 지식관리-대시보드.html             # 로컬 생성 파일
+├── 지식관리-대시보드.command          # macOS 실행기
+└── 지식관리-대시보드.cmd              # Windows 실행기
+```
+
+## 가장 쉬운 실행 방법
+
+운영체제에 맞는 파일을 더블클릭합니다.
+
+- macOS: `지식관리-대시보드.command`
+- Windows: `지식관리-대시보드.cmd`
+
+실행기가 자동으로 수행하는 작업:
+
+1. 자신의 위치를 프로젝트 루트로 설정
+2. Node.js 확인 및 없으면 공식 LTS 설치 시도
+3. 현재 `sources/` 업무 폴더를 자동 탐색
+4. Wiki 그래프와 대시보드 재생성
+5. 로컬 편집 서버 시작
+6. 기본 브라우저에서 대시보드 열기
+
+Node.js 자동 설치에는 인터넷 연결과 관리자 승인 또는 UAC 승인이 필요할 수 있습니다. 조직 정책이 설치를 차단하면 [Node.js LTS](https://nodejs.org/)를 수동 설치한 뒤 다시 실행하세요.
+
+## PDF 원본 변환
+
+AI agent에 ingest를 요청하면 먼저 원본과 기존 변환본을 비교합니다. 직접 실행할 수도 있습니다.
+
+```bash
+python3 scripts/ingest-pdf-sources.py "sources/제품 매뉴얼" \
+  --source-root sources
+```
+
+기본 출력 위치는 `sources/_generated/`입니다. `pypdf`가 없다면 다음 명령으로 설치합니다.
+
+```bash
+python3 -m pip install pypdf
+```
+
+변환본은 [공통 템플릿](templates/source-markdown.md)을 사용하며 다음 정보를 포함합니다.
+
+- 원본 상대경로와 사용자 정의 분류
+- 제목, 발행처, 발행일, 문서 유형
+- 페이지 경계와 원문 텍스트
+- 핵심 요약과 주요 기준·수치·요건
+- `검토` 상태의 typed relation 후보
+- OCR·표·도면 재확인 메모
+
+기존 변환본은 덮어쓰지 않습니다.
+
+## Wiki ingest 저장 위치
+
+| 내용 | 위치 |
+| --- | --- |
+| 원본 PDF·문서 | `sources/<사용자 업무 폴더>/` |
+| 원본 변환 Markdown | `sources/_generated/` |
+| 원문별 Wiki 노트 | `llm-wiki/wiki/sources/` |
+| 반복 개념 | `llm-wiki/wiki/concepts/` |
+| 회사·제품·인물·조직 | `llm-wiki/wiki/entities/` |
+| 아이디어 | `llm-wiki/wiki/ideas/` |
+| 결정과 근거 | `llm-wiki/wiki/decisions/` |
+| typed relation | `llm-wiki/wiki/ontology/relations.md` |
+| 문서·보고서 산출물 | `llm-wiki/outputs/docs/` |
+
+첫 실행 또는 첫 ingest에서 필요한 `index.md`, `log.md`, `relations.md`를 생성합니다.
+
+## 온톨로지 관계 편집
+
+`llm-wiki/wiki/ontology/relations.md`가 관계 유형과 객체 관계의 단일 원본입니다.
+
+- `검토`: 자동 추출되어 사용자 확인이 필요한 관계
+- `확정`: 사용자가 방향·근거를 확인한 관계
+- `제외`: 잘못된 관계 또는 재추출을 막을 관계
+
+권장 실행 방식은 대시보드 실행기를 여는 것입니다. 서버 모드에서는 저장 시 검증 후 `relations.md`를 원자적으로 갱신하고 그래프를 자동 재생성합니다.
+
+루트의 `ontology-editor.html`은 외부 의존성 없는 standalone 사본입니다. 브라우저 보안상 그래프 자동 재생성은 할 수 없으므로, 관계를 실제 프로젝트에 반영할 때는 대시보드 서버 모드를 사용하세요.
+
+## RAG 답변 참조 순서
+
+1. `graphify-out/GRAPH_REPORT.md`
+2. `llm-wiki/wiki/index.md`
+3. `llm-wiki/wiki/ontology/relations.md`의 `확정` 관계
+4. 관련 `decisions/`, `concepts/`, `entities/`
+5. 관련 `llm-wiki/wiki/sources/`
+6. 필요한 경우 `sources/_generated/`
+7. 정확한 페이지·수치 확인이 필요한 경우 해당 `sources/<업무 폴더>/` 원본
+
+원문에서 직접 확인한 사실은 출처와 위치를 제시해 사용할 수 있습니다. `검토` 관계를 문서 사이의 확정 연결로 사용해서는 안 됩니다.
+
+## 주요 명령
+
+| 명령 | 용도 |
+| --- | --- |
+| `node scripts/build-wiki-graph.mjs` | Wiki·관계 그래프와 대시보드 생성 |
+| `node scripts/serve-ontology-editor.mjs` | 온톨로지 편집 서버 실행 |
+| `python3 scripts/ingest-pdf-sources.py <폴더> --source-root sources` | PDF 변환본 생성 |
+| `node --test scripts/*.test.mjs` | Node 테스트 |
+| `python3 scripts/ingest-pdf-sources.test.py` | PDF 변환기 테스트 |
+| `graphify update . --force` | Graphify 분석 갱신 |
+
+## GitHub 공개 범위
+
+다음 내용은 `.gitignore`로 제외됩니다.
+
+- `sources/**` 실제 원자료
+- `llm-wiki/**` 실제 Wiki와 산출물
+- `graphify-out/**` 생성 그래프
+- 루트의 생성된 dashboard/editor HTML
+
+각 작업 폴더의 빈 구조를 유지하는 `.gitkeep`과 재사용 가능한 코드·템플릿만 추적합니다. 공개 전에는 `git status`와 비밀정보 검색을 다시 확인하세요.
+
+## 라이선스
+
+[MIT License](LICENSE)

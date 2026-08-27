@@ -1,0 +1,26 @@
+# Local tool and app state.
+.codex/
+.obsidian/
+.uv-cache/
+.uv-tools/
+__pycache__/
+*.py[cod]
+
+# Local knowledge base and generated/research content.
+llm-wiki-graphify-install-guide.txt
+ontology-editor.html
+지식관리-대시보드.html
+graphify-out/**
+!graphify-out/
+!graphify-out/**/
+!graphify-out/**/.gitkeep
+llm-wiki/**
+!llm-wiki/
+!llm-wiki/**/
+!llm-wiki/**/.gitkeep
+sources/**
+!sources/.gitkeep
+# OS/editor noise.
+Thumbs.db
+Desktop.ini
+.DS_Store
