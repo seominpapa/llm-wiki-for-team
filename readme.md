@@ -148,7 +148,6 @@ python3 -m pip install pypdf
 | 아이디어 | `llm-wiki/wiki/ideas/` |
 | 결정과 근거 | `llm-wiki/wiki/decisions/` |
 | typed relation | `llm-wiki/wiki/ontology/relations.md` |
-| 문서·보고서 산출물 | `llm-wiki/outputs/docs/` |
 
 첫 실행 또는 첫 ingest에서 필요한 `index.md`, `log.md`, `relations.md`를 생성합니다.
 
@@ -164,17 +163,44 @@ python3 -m pip install pypdf
 
 루트의 `ontology-editor.html`은 외부 의존성 없는 standalone 사본입니다. 브라우저 보안상 그래프 자동 재생성은 할 수 없으므로, 관계를 실제 프로젝트에 반영할 때는 대시보드 서버 모드를 사용하세요.
 
-## RAG 답변 참조 순서
+## RAG 기반 질문·문서 생성·아이디어 참조 절차
 
-1. `graphify-out/GRAPH_REPORT.md`
-2. `llm-wiki/wiki/index.md`
-3. `llm-wiki/wiki/ontology/relations.md`의 `확정` 관계
-4. 관련 `decisions/`, `concepts/`, `entities/`
-5. 관련 `llm-wiki/wiki/sources/`
-6. 필요한 경우 `sources/_generated/`
-7. 정확한 페이지·수치 확인이 필요한 경우 해당 `sources/<업무 폴더>/` 원본
+RAG 답변, 문서 생성, 아이디어 검토는 결과 형식은 다르지만 같은 순서로 지식을 확인합니다.
 
-원문에서 직접 확인한 사실은 출처와 위치를 제시해 사용할 수 있습니다. `검토` 관계를 문서 사이의 확정 연결로 사용해서는 안 됩니다.
+```text
+1. 찾기       GRAPH_REPORT.md → wiki/index.md
+2. 검증       relations.md → decisions/ · concepts/ · entities/ · ideas/
+3. 근거 확인  wiki/sources/ → sources/_generated/ → sources/<업무 폴더>/ 원본
+```
+
+한 문장으로 표현하면 다음과 같습니다.
+
+> 먼저 지식지도에서 관련 자료를 찾고, 확정된 관계와 정리된 지식으로 내용을 검증한 다음, 필요한 만큼 원문으로 내려가 답변 근거를 확인합니다.
+
+### 참조 파일과 역할
+
+| 단계 | 참조 파일 | 파일에 있는 내용 | 사용하는 목적 |
+| --- | --- | --- | --- |
+| 찾기 | `graphify-out/GRAPH_REPORT.md` | 전체 문서 수, 핵심 문서, 문서 연결, 주요 지식 군집 | 질문과 관련된 지식 영역과 후보 문서를 빠르게 찾습니다. 이 파일 자체를 최종 사실 근거로 사용하지 않습니다. |
+| 찾기 | `llm-wiki/wiki/index.md` | source, concept, entity, idea, decision 문서의 목차와 링크 | 실제로 읽어야 할 Wiki 문서를 선택합니다. |
+| 검증 | `llm-wiki/wiki/ontology/relations.md` | 객체 간 관계의 유형, 방향, 근거, `검토·확정·제외` 상태 | 상태가 `확정`인 관계만 객체 간 연결 근거로 사용합니다. |
+| 검증 | `llm-wiki/wiki/decisions/` | 기존 판단, 선택 결과와 근거 | 이미 결정된 내용과 판단 배경을 확인합니다. |
+| 검증 | `llm-wiki/wiki/concepts/` | 반복되는 핵심 개념의 정의와 관련 문서 | 질문에 등장하는 용어와 개념을 이해합니다. |
+| 검증 | `llm-wiki/wiki/entities/` | 회사, 제품, 인물, 조직 등 객체 정보 | 질문의 대상과 관련 객체를 확인합니다. |
+| 검증 | `llm-wiki/wiki/ideas/` | 기존 아이디어, 가정, 검증 질문과 실험 | 아이디어 요청에서 기존 제안과의 중복 및 연결 가능성을 확인합니다. |
+| 근거 확인 | `llm-wiki/wiki/sources/` | 원문별 요약, 주요 기준·수치, 출처와 페이지 근거 | 답변과 문서의 주된 사실 근거로 사용합니다. |
+| 근거 확인 | `sources/_generated/` | 원본을 변환한 Markdown, 페이지 경계, 텍스트 추출 상태 | Wiki 요약에 없는 세부 문맥과 원문 표현을 확인합니다. |
+| 근거 확인 | `sources/<업무 폴더>/` | PDF 등 최종 원본과 표·도면·페이지 | 정확한 조문, 수치, 표, 페이지를 최종 검증합니다. |
+
+### 읽기 원칙
+
+- 모든 파일을 전부 읽지 않고 질문에 필요한 범위까지만 읽습니다.
+- `GRAPH_REPORT.md`와 `index.md`는 자료를 찾는 지도이며 최종 사실 근거가 아닙니다.
+- 객체 간 관계는 `relations.md`에서 상태가 `확정`인 경우에만 사용합니다.
+- `검토` 관계는 관계 검토 요청이 아닌 일반 답변·문서·아이디어의 근거로 사용하지 않습니다.
+- 주요 사실은 `wiki/sources/`에서 확인하고, 세부 문맥이 부족하면 변환 Markdown을 확인합니다.
+- 정확한 조문·수치·표·페이지가 필요한 경우에만 최종 원본까지 확인합니다.
+- 사용한 Wiki 문서와 원문 위치를 가능한 범위에서 결과에 함께 표시합니다.
 
 ## 주요 명령
 

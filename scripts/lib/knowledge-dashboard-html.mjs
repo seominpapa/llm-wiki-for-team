@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 export const RAG_FLOW = Object.freeze([
@@ -13,7 +13,7 @@ export const RAG_FLOW = Object.freeze([
 
 export const SOURCE_CATEGORY_DESCRIPTIONS = Object.freeze({});
 
-export async function discoverSourceCategories(root) {
+async function listSourceCategoryEntries(root) {
   let entries;
   try {
     entries = await readdir(path.join(root, "sources"), { withFileTypes: true });
@@ -23,8 +23,12 @@ export async function discoverSourceCategories(root) {
   }
   return entries
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".") && !entry.name.startsWith("_"))
-    .map((entry) => entry.name.normalize("NFC"))
-    .sort((a, b) => a.localeCompare(b, "ko"));
+    .map((entry) => ({ name: entry.name.normalize("NFC"), directoryName: entry.name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+}
+
+export async function discoverSourceCategories(root) {
+  return (await listSourceCategoryEntries(root)).map(({ name }) => name);
 }
 
 async function listFiles(directory) {
@@ -47,22 +51,98 @@ async function listFiles(directory) {
   return files.flat();
 }
 
-export async function createKnowledgeDashboardSnapshot({ root, sourceCategories, graph, relations }) {
-  const discoveredCategories = sourceCategories ?? await discoverSourceCategories(root);
-  const categories = await Promise.all(
-    discoveredCategories.map(async (name) => {
-      const files = await listFiles(path.join(root, "sources", name));
-      const sizes = await Promise.all(files.map(async (filePath) => (await stat(filePath)).size));
+function frontmatterValue(markdown, key) {
+  const frontmatter = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1];
+  if (!frontmatter) return null;
+  const match = frontmatter.match(new RegExp(`^${key}:\\s*(.*?)\\s*$`, "m"));
+  if (!match) return null;
+  const value = match[1];
+  if (value.length >= 2 && value[0] === '"' && value.at(-1) === '"') {
+    return value.slice(1, -1).replace(/\\([\\"])/g, "$1");
+  }
+  if (value.length >= 2 && value[0] === "'" && value.at(-1) === "'") {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+function normalizeSourceFile(value) {
+  return String(value)
+    .replaceAll("\\", "/")
+    .replace(/^\.\/+/, "")
+    .replace(/\/{2,}/g, "/")
+    .normalize("NFC");
+}
+
+function isIngested(value) {
+  if (!value) return false;
+  return !/^(?:false|0|no|null|undefined)$/i.test(String(value).trim());
+}
+
+async function readWikiSourceReferences(wikiSources) {
+  const references = await Promise.all(
+    wikiSources.map(async (filePath) => {
+      const markdown = await readFile(filePath, "utf8");
+      const sourceFile = frontmatterValue(markdown, "source_file");
+      const generatedSource = frontmatterValue(markdown, "generated_source");
       return {
-        name,
-        file_count: files.length,
-        byte_size: sizes.reduce((total, size) => total + size, 0),
+        sourceFile: sourceFile && isIngested(frontmatterValue(markdown, "ingested"))
+          ? normalizeSourceFile(sourceFile)
+          : null,
+        generatedSource: generatedSource ? normalizeSourceFile(generatedSource) : null,
       };
     }),
   );
+  return {
+    completed: new Set(references.map(({ sourceFile }) => sourceFile).filter(Boolean)),
+    generated: new Set(references.map(({ generatedSource }) => generatedSource).filter(Boolean)),
+  };
+}
+
+export async function createKnowledgeDashboardSnapshot({ root, sourceCategories, graph, relations }) {
+  const sourceCategoryEntries = await listSourceCategoryEntries(root);
+  const categoryDirectories = new Map(
+    sourceCategoryEntries.map(({ name, directoryName }) => [name, directoryName]),
+  );
+  const discoveredCategories = sourceCategories ?? sourceCategoryEntries.map(({ name }) => name);
   const wikiSources = (await listFiles(path.join(root, "llm-wiki", "wiki", "sources"))).filter(
     (filePath) => filePath.toLowerCase().endsWith(".md"),
   );
+  const sourceReferences = await readWikiSourceReferences(wikiSources);
+  const categorySnapshots = await Promise.all(
+    discoveredCategories.map(async (name) => {
+      const normalizedName = name.normalize("NFC");
+      const allFiles = await listFiles(
+        path.join(root, "sources", categoryDirectories.get(normalizedName) ?? name),
+      );
+      const files = (
+        await Promise.all(allFiles.map(async (filePath) => {
+          const sourceFile = normalizeSourceFile(path.relative(root, filePath));
+          if (sourceReferences.generated.has(sourceFile)) return null;
+          const completed = sourceReferences.completed.has(sourceFile);
+          return {
+            name: path.basename(filePath).normalize("NFC"),
+            source_file: sourceFile,
+            byte_size: (await stat(filePath)).size,
+            ingest_status: completed ? "완료" : "미완료",
+          };
+        }))
+      ).filter(Boolean).sort((a, b) => a.source_file.localeCompare(b.source_file, "ko"));
+      const completedCount = files.filter(({ ingest_status: status }) => status === "완료").length;
+      return {
+        name: normalizedName,
+        file_count: files.length,
+        byte_size: files.reduce((total, { byte_size: size }) => total + size, 0),
+        completed_count: completedCount,
+        pending_count: files.length - completedCount,
+        files,
+        generated_only: allFiles.length > 0 && files.length === 0,
+      };
+    }),
+  );
+  const categories = categorySnapshots
+    .filter(({ generated_only: generatedOnly }) => !generatedOnly)
+    .map(({ generated_only: _generatedOnly, ...category }) => category);
   const statusCounts = { "검토": 0, "확정": 0, "제외": 0 };
   for (const { status } of relations) {
     if (Object.hasOwn(statusCounts, status)) statusCounts[status] += 1;
@@ -75,6 +155,8 @@ export async function createKnowledgeDashboardSnapshot({ root, sourceCategories,
       category_descriptions: SOURCE_CATEGORY_DESCRIPTIONS,
       file_count: categories.reduce((total, category) => total + category.file_count, 0),
       byte_size: categories.reduce((total, category) => total + category.byte_size, 0),
+      completed_count: categories.reduce((total, category) => total + category.completed_count, 0),
+      pending_count: categories.reduce((total, category) => total + category.pending_count, 0),
     },
     wiki: { source_count: wikiSources.length },
     graph: { node_count: graph.nodes.length, edge_count: graph.edges.length },
@@ -95,14 +177,26 @@ const safeJson = (value) =>
     `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
   );
 
+export const formatMegabytes = (byteSize) => `${(byteSize / 1_000_000).toFixed(2)} MB`;
+
 export function renderKnowledgeDashboardHtml(snapshot) {
   const categoryCards = snapshot.sources.categories
     .map(
-      ({ name, file_count: fileCount, byte_size: byteSize }) => `
+      ({ name, file_count: fileCount, byte_size: byteSize, completed_count: completedCount, pending_count: pendingCount, files }) => `
         <article class="source-card">
           <h3>${escapeHtml(name)}</h3>
           <p>${escapeHtml(snapshot.sources.category_descriptions[name] ?? "원천 자료")}</p>
-          <dl><div><dt>파일</dt><dd>${fileCount}개</dd></div><div><dt>용량</dt><dd>${byteSize} B</dd></div></dl>
+          <dl>
+            <div><dt>파일</dt><dd>${fileCount}개</dd></div>
+            <div><dt>용량</dt><dd>${formatMegabytes(byteSize)}</dd></div>
+            <div><dt>완료</dt><dd>${completedCount}개</dd></div>
+            <div><dt>미완료</dt><dd>${pendingCount}개</dd></div>
+          </dl>
+          ${files.length > 0 ? `<details><summary>파일별 현황</summary><div class="file-table-wrap"><table>
+            <thead><tr><th>파일</th><th>용량</th><th>ingest</th></tr></thead>
+            <tbody>${files.map(({ name: fileName, source_file: sourceFile, byte_size: fileSize, ingest_status: status }) => `
+              <tr><td><strong>${escapeHtml(fileName)}</strong><small>${escapeHtml(sourceFile)}</small></td><td>${formatMegabytes(fileSize)}</td><td><span class="status ${status === "완료" ? "done" : "pending"}">${status}</span></td></tr>`).join("")}</tbody>
+          </table></div></details>` : ""}
         </article>`,
     )
     .join("");
@@ -144,9 +238,19 @@ export function renderKnowledgeDashboardHtml(snapshot) {
   .source-card { padding:16px; box-shadow:none; }
   .source-card h3 { margin:0; font-size:15px; }
   .source-card p { min-height:38px; margin:7px 0 13px; color:var(--muted); font-size:13px; }
-  dl { display:flex; gap:18px; margin:0; }
+  dl { display:flex; flex-wrap:wrap; gap:10px 18px; margin:0; }
   dl div { display:flex; gap:6px; }
   dt { color:var(--muted); } dd { margin:0; font-weight:800; }
+  details { margin-top:14px; border-top:1px solid var(--line); padding-top:12px; }
+  summary { color:var(--green); font-weight:800; cursor:pointer; }
+  .file-table-wrap { overflow-x:auto; margin-top:10px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th,td { padding:9px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  th { color:var(--muted); font-weight:700; }
+  td small { display:block; max-width:520px; margin-top:3px; color:var(--muted); overflow-wrap:anywhere; }
+  .status { display:inline-block; padding:3px 7px; border-radius:999px; font-weight:800; white-space:nowrap; }
+  .status.done { color:var(--green); background:var(--mint); }
+  .status.pending { color:var(--amber); background:#fff3cd; }
   .ontology-counts { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
   .ontology-counts div { padding:18px; border-radius:12px; background:#f7faf7; }
   .ontology-counts strong { display:block; margin-top:5px; font-size:24px; }
@@ -173,8 +277,8 @@ export function renderKnowledgeDashboardHtml(snapshot) {
 <main>
   <section id="status-panel" role="tabpanel" aria-labelledby="status-tab">
     <div class="metrics">
-      <article class="metric"><span>원천 파일</span><strong>${snapshot.sources.file_count}개</strong><small>사용자 정의 분류</small></article>
-      <article class="metric"><span>ingest Wiki source</span><strong>${snapshot.wiki.source_count}</strong><small>${snapshot.wiki.source_count > 0 ? "ingest 자료 있음" : "ingest 대기"}</small></article>
+      <article class="metric"><span>원천 파일</span><strong>${snapshot.sources.file_count}개</strong><small>${formatMegabytes(snapshot.sources.byte_size)}</small></article>
+      <article class="metric"><span>ingest 완료</span><strong>${snapshot.sources.completed_count} / ${snapshot.sources.file_count}</strong><small>미완료 ${snapshot.sources.pending_count}개</small></article>
       <article class="metric"><span>그래프 노드</span><strong>${snapshot.graph.node_count}</strong><small>${snapshot.graph.node_count > 0 ? "그래프 생성됨" : "그래프 대기"}</small></article>
       <article class="metric"><span>그래프 엣지</span><strong>${snapshot.graph.edge_count}</strong><small>방향 관계</small></article>
     </div>

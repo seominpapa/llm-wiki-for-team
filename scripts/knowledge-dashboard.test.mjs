@@ -6,6 +6,12 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  createKnowledgeDashboardSnapshot,
+  formatMegabytes,
+  renderKnowledgeDashboardHtml,
+} from "./lib/knowledge-dashboard-html.mjs";
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceCategories = [
   "고객 계약서",
@@ -72,8 +78,21 @@ test("graph builder creates a self-contained root knowledge dashboard from works
     const categoryDir = path.join(projectRoot, "sources", directoryName);
     await mkdir(categoryDir, { recursive: true });
     await writeFile(path.join(categoryDir, ".gitkeep"), "", "utf8");
-    await writeFile(path.join(categoryDir, `source-${index + 1}.txt`), "x".repeat(index + 1), "utf8");
-    expectedSources.push({ name: category, file_count: 1, byte_size: index + 1 });
+    const byteSize = index === 0 ? 1 : 1_000_000;
+    await writeFile(path.join(categoryDir, `source-${index + 1}.txt`), "x".repeat(byteSize), "utf8");
+    expectedSources.push({
+      name: category,
+      file_count: 1,
+      byte_size: byteSize,
+      completed_count: 1,
+      pending_count: 0,
+      files: [{
+        name: `source-${index + 1}.txt`,
+        source_file: `sources/${category}/source-${index + 1}.txt`,
+        byte_size: byteSize,
+        ingest_status: "완료",
+      }],
+    });
   }
   await mkdir(path.join(projectRoot, "sources", "_generated"), { recursive: true });
   await writeFile(path.join(projectRoot, "sources", "_generated", "ignored.md"), "generated", "utf8");
@@ -83,12 +102,54 @@ test("graph builder creates a self-contained root knowledge dashboard from works
     "x".repeat(11),
     "utf8",
   );
-  expectedSources[0] = { name: sourceCategories[0], file_count: 2, byte_size: 12 };
+  expectedSources[0] = {
+    name: sourceCategories[0],
+    file_count: 2,
+    byte_size: 12,
+    completed_count: 1,
+    pending_count: 1,
+    files: [
+      {
+        name: "appendix.bin",
+        source_file: `sources/${sourceCategories[0]}/nested/appendix.bin`,
+        byte_size: 11,
+        ingest_status: "미완료",
+      },
+      {
+        name: "source-1.txt",
+        source_file: `sources/${sourceCategories[0]}/source-1.txt`,
+        byte_size: 1,
+        ingest_status: "완료",
+      },
+    ],
+  };
 
-  for (const title of ["문서 A", "문서 B", "문서 C", "문서 D"]) {
+  const legacyGenerated = path.join(projectRoot, "sources", "09 생성문서", "legacy.md");
+  await mkdir(path.dirname(legacyGenerated), { recursive: true });
+  await writeFile(legacyGenerated, "generated", "utf8");
+
+  const wikiDocuments = {
+    "문서 A": `---
+source_file: "sources\\\\${sourceCategories[0]}\\\\source-1.txt"
+ingested: "2026-08-27"
+---`,
+    "문서 B": `---
+source_file: "sources/${sourceCategories[1]}/source-2.txt"
+ingested: "2026-08-27"
+---`,
+    "문서 C": `---
+generated_source: "sources/09 생성문서/legacy.md"
+ingested: "2026-08-27"
+---`,
+    "문서 D": `---
+source_file: "sources/${sourceCategories[0]}/nested/appendix.bin"
+ingested: false
+---`,
+  };
+  for (const [title, frontmatter] of Object.entries(wikiDocuments)) {
     await writeFile(
       path.join(projectRoot, "llm-wiki", "wiki", "sources", `${title.at(-1).toLowerCase()}.md`),
-      `# ${title}\n`,
+      `${frontmatter}\n\n# ${title}\n`,
       "utf8",
     );
   }
@@ -113,6 +174,18 @@ test("graph builder creates a self-contained root knowledge dashboard from works
     "utf8",
   );
 
+  const directSnapshot = await createKnowledgeDashboardSnapshot({
+    root: projectRoot,
+    graph: { nodes: [{}, {}, {}, {}], edges: [{}, {}] },
+    relations: [{ status: "검토" }, { status: "확정" }, { status: "제외" }],
+  });
+  assert.deepEqual(directSnapshot.sources.categories, expectedSources);
+  assert.equal(formatMegabytes(1_000_000), "1.00 MB");
+  assert.deepEqual(
+    embeddedDashboardData(renderKnowledgeDashboardHtml(directSnapshot)),
+    directSnapshot,
+  );
+
   execFileSync(process.execPath, [path.join(projectRoot, "scripts", "build-wiki-graph.mjs")], {
     cwd: projectRoot,
     encoding: "utf8",
@@ -127,15 +200,24 @@ test("graph builder creates a self-contained root knowledge dashboard from works
   const text = visibleText(html);
 
   assert.deepEqual(data.sources.categories, expectedSources);
+  assert.equal(data.sources.file_count, 3);
+  assert.equal(data.sources.byte_size, 1_000_012);
+  assert.equal(data.sources.completed_count, 2);
+  assert.equal(data.sources.pending_count, 1);
   assert.equal(data.wiki.source_count, 4);
   assert.deepEqual(data.graph, { node_count: 4, edge_count: 2 });
   assert.deepEqual(data.ontology.status_counts, { "검토": 1, "확정": 1, "제외": 1 });
 
-  for (const { name, file_count: fileCount, byte_size: byteSize } of expectedSources) {
+  for (const { name, file_count: fileCount } of expectedSources) {
     assertVisibleMetric(text, name, fileCount, "개");
-    assertVisibleMetric(text, name, byteSize, "B");
   }
-  assertVisibleMetric(text, "ingest Wiki source", 4);
+  assert.match(text, /제품 매뉴얼[^]*?1\.00\s*MB/);
+  assert.match(text, /ingest 완료\s*2\s*\/\s*3/);
+  assertVisibleMetric(text, "미완료", 1, "개");
+  assert.match(text, /appendix\.bin[^]*?0\.00\s*MB[^]*?미완료/);
+  assert.match(text, /source-1\.txt[^]*?0\.00\s*MB[^]*?완료/);
+  assert.doesNotMatch(text, /1000000\s*B/);
+  assert.doesNotMatch(text, /09 생성문서/);
   assertVisibleMetric(text, "그래프 노드", 4);
   assertVisibleMetric(text, "그래프 엣지", 2);
   assertVisibleMetric(text, "검토", 1);

@@ -56,12 +56,12 @@
 C:\Python314\python.exe -m http.server 8766 --bind 127.0.0.1
 ```
 
-3. 서버는 HTML 파일이 있는 폴더에서 실행한다. 예를 들어 `llm-wiki/outputs/docs/mockups/pharma-sales-mockup.html`을 보여줄 때는 `llm-wiki/outputs/docs/mockups`를 working directory로 두고, URL은 `http://127.0.0.1:8766/pharma-sales-mockup.html` 형태로 안내한다.
+3. 서버는 HTML 파일이 있는 폴더에서 실행한다. 사용자가 지정한 파일 위치를 working directory로 두고 해당 파일명으로 로컬 URL을 안내한다.
 4. 백그라운드 서버가 샌드박스 안에서 바로 종료될 수 있으므로, 사용자가 실제로 봐야 하는 로컬 서버는 필요하면 승인 요청 후 샌드박스 밖에서 실행한다.
 5. URL을 안내하거나 브라우저에 열기 전에 반드시 `Invoke-WebRequest -UseBasicParsing <url>`로 `200 OK`와 응답 길이를 확인한다.
 6. 사용자가 이미 열어둔 포트가 죽어 있으면 새 포트를 안내하기보다 가능하면 같은 포트에서 서버를 다시 띄운 뒤 새로고침을 요청한다.
 7. 인앱 브라우저 자동화가 로컬 URL을 `ERR_BLOCKED_BY_CLIENT`, `ERR_CONNECTION_REFUSED`, 또는 Browser Use URL policy로 막으면 우회하지 않는다. 서버 상태, 포트, 바인딩 주소를 확인한 뒤에도 막히면 그 제한을 설명하고, 사용자의 승인 하에 기본 데스크톱 브라우저로 열거나 정적 이미지/스크린샷 대안을 제공한다.
-8. 로컬 HTML 목업은 제품 코드와 구분해 `llm-wiki/outputs/docs/mockups/`에 둔다. 장기 보존할 설계 산출물이 필요하면 `llm-wiki/outputs/docs/`에 별도 문서로 정리한다.
+8. 로컬 HTML 목업이나 장기 보존 문서의 기본 저장 위치를 정하지 않는다. 사용자가 저장 위치를 명시한 경우에만 해당 위치에 저장한다.
 
 ### 프로젝트 구조나 현재 상태를 묻는 질문
 
@@ -92,32 +92,73 @@ C:\Python314\python.exe -m http.server 8766 --bind 127.0.0.1
 - Graphify: 개념 간 연결, 핵심 노드, 경로 확인
 - LLM Wiki: 기존 요약, 출처, 개념 노트 확인
 
-성과물 저장:
+Wiki 반영 요청 시:
 
-- 새 개념 정리가 필요하면 `llm-wiki/wiki/concepts/`에 저장한다.
-- 기업/인물/제품 정리가 필요하면 `llm-wiki/wiki/entities/`에 저장한다.
-- 원천 자료 요약이면 `llm-wiki/wiki/sources/`에 저장한다.
+- 사용자가 Wiki 반영을 명시한 경우에만 새 개념은 `llm-wiki/wiki/concepts/`, 기업·인물·제품은 `llm-wiki/wiki/entities/`, 원천 자료 요약은 `llm-wiki/wiki/sources/`에 저장한다.
 - 변경했다면 `llm-wiki/wiki/index.md`와 `llm-wiki/wiki/log.md`도 함께 갱신한다.
 
-### RAG 기반 답변 요청
+### RAG 기반 질문·문서 생성·아이디어 요청
 
-다음 순서로 필요한 범위만 읽는다.
+사용자는 RAG 기반 질문, 문서 생성, 아이디어 발굴·검토를 요청할 수 있다. 세 요청은 결과 형식만 다르며 기본 참조 절차는 동일하다. 전체 파일을 모두 읽지 말고 `찾기 → 검증 → 근거 확인` 순서로 질문에 필요한 범위까지만 읽는다.
 
-1. `graphify-out/GRAPH_REPORT.md`: 전체 지형과 관련 노드 확인. 없으면 아직 그래프가 없다고 명시한다.
-2. `llm-wiki/wiki/index.md`: 관련 source, concept, entity, idea, decision 문서 찾기.
-3. `llm-wiki/wiki/ontology/relations.md`: 질문과 관련된 typed relation 중 상태가 `확정`인 행만 선택.
-4. 관련 `llm-wiki/wiki/decisions/`, `concepts/`, `entities/`: 결정과 정리된 개념 확인.
-5. 관련 `llm-wiki/wiki/sources/`: ingest된 원문별 Markdown과 인용 위치 확인.
-6. 필요한 경우 `sources/_generated/`: 원본 변환본으로 문맥과 표·수치 확인.
-7. 정확한 조문·페이지·수치 확인이 필요한 경우에만 관련 `sources/<업무 폴더>/` 원본 확인.
+#### 1단계: 관련 지식 찾기
 
-답변 규칙:
+1. `graphify-out/GRAPH_REPORT.md`
+   - 내용: 전체 문서 수, 핵심 문서, 문서 간 연결, 주요 지식 군집, 해석되지 않은 링크와 관계.
+   - 목적: 질문과 관련된 지식 영역과 후보 문서를 찾는다. 이 보고서 자체를 최종 사실 근거로 사용하지 않는다.
+   - 파일이 없으면 그래프가 아직 생성되지 않았다고 밝히고 다음 단계로 진행한다.
+2. `llm-wiki/wiki/index.md`
+   - 내용: source, concept, entity, idea, decision 문서의 목차와 Wiki 링크.
+   - 목적: 실제로 읽어야 할 문서를 선택한다.
+   - 파일이 없으면 `llm-wiki/wiki/`의 관련 폴더를 직접 확인한다.
+
+#### 2단계: 관계와 정리된 지식 검증
+
+3. `llm-wiki/wiki/ontology/relations.md`
+   - 내용: 객체 간 관계 유형, 출발·도착 객체, 방향, 근거, 위치, `검토·확정·제외` 상태.
+   - 목적: 상태가 `확정`인 관계만 객체 간 연결과 추론의 근거로 선택한다.
+4. 관련 `llm-wiki/wiki/decisions/`, `concepts/`, `entities/`, `ideas/`
+   - `decisions/`: 기존 판단, 선택 결과와 근거.
+   - `concepts/`: 반복되는 핵심 개념의 정의와 관련 문서.
+   - `entities/`: 회사, 제품, 인물, 조직 등 객체 정보.
+   - `ideas/`: 기존 아이디어, 가정, 검증 질문과 실험.
+   - 목적: 질문의 의미와 기존 지식·결정·아이디어의 연결을 이해한다.
+
+#### 3단계: 답변 근거 확인
+
+5. 관련 `llm-wiki/wiki/sources/`
+   - 내용: 원문별 요약, 주요 기준·수치, 출처, 페이지 근거, 관련 문서.
+   - 목적: 답변, 문서, 아이디어의 주된 사실 근거로 사용한다.
+6. 필요한 경우 `sources/_generated/`
+   - 내용: 원본을 Markdown으로 변환한 내용, 페이지 경계, 텍스트 추출 상태, 세부 문맥.
+   - 목적: Wiki source에 필요한 문맥이나 원문 표현이 부족할 때만 확인한다.
+7. 정확한 조문·페이지·수치·표·도면 확인이 필요한 경우에만 관련 `sources/<업무 폴더>/` 원본
+   - 내용: PDF 등 최종 원본 파일과 원본의 표·도면·페이지.
+   - 목적: 정확성이 중요한 내용을 최종 검증한다.
+
+읽기 중단 및 확장 조건:
+
+- 신뢰할 수 있는 답변 근거가 확보되면 더 깊은 단계의 파일을 불필요하게 읽지 않는다.
+- 관계를 주장하지 않는 단순 사실 질문이라도 관련 `wiki/sources/`에서 사실과 출처를 확인한다.
+- Wiki source만으로 문맥이 충분하면 변환 Markdown과 원본을 읽지 않는다.
+- 정확한 법률 조문, 수치, 표, 페이지가 필요하면 반드시 최종 원본까지 확인한다.
+- 관련 Wiki 문서가 없으면 그 사실을 밝히고, 필요한 원자료를 사용자에게 요청하거나 최신 정보가 필요한 경우 웹 검색으로 확인한다.
+
+공통 근거 규칙:
 
 - 객체 간 관계를 사실이나 추론 근거로 사용할 때는 `relations.md`에서 상태가 `확정`인 관계만 사용한다.
-- `검토` 관계는 기본 RAG 답변에서 주장하거나 추론에 사용하지 않는다. 사용자가 관계 검토 자체를 요청한 경우에만 후보임을 분명히 표시해 별도로 제시한다.
-- `제외` 관계는 답변과 그래프의 활성 관계에서 사용하지 않는다.
-- 관계 상태와 별개로, 원문 또는 ingest 문서에서 직접 확인한 사실은 출처와 위치를 제시해 답변 근거로 사용할 수 있다. 확인되지 않은 typed relation으로 문서 사이를 연결해 추론해서는 안 된다.
-- 답변에는 사용한 wiki 문서와 원문 위치를 가능한 범위에서 함께 제시한다.
+- `검토` 관계는 답변, 문서, 아이디어의 사실 주장이나 추론에 사용하지 않는다. 사용자가 관계 검토 자체를 요청한 경우에만 후보임을 분명히 표시해 별도로 제시한다.
+- `제외` 관계는 답변, 문서, 아이디어와 그래프의 활성 관계에서 사용하지 않는다.
+- 관계 상태와 별개로 원문 또는 ingest 문서에서 직접 확인한 사실은 출처와 위치를 제시해 근거로 사용할 수 있다. 확인되지 않은 typed relation으로 문서 사이를 연결해 추론해서는 안 된다.
+- 결과에는 사용한 wiki 문서와 원문 위치를 가능한 범위에서 함께 제시한다.
+
+요청별 처리:
+
+- RAG 기반 질문은 확인된 사실과 `확정` 관계를 중심으로 직접 답한다.
+- 문서 생성은 대상 독자, 목적, 구조, 톤을 요청 내용에서 파악하고 공통 참조 절차로 확보한 근거를 사용한다. 문서의 기본 저장 위치를 정하거나 별도 경로를 안내하지 않는다. 사용자가 저장 위치를 명시한 경우에만 해당 위치에 저장한다.
+- 아이디어 요청은 관련 `ideas/`, `decisions/`, `concepts/`, `entities/`를 확인해 기존 지식과 연결한다. 직접 관련된 기존 문서가 없으면 그 사실을 밝히고 사용자 아이디어를 1차 원문으로 삼아 문제, 대상 사용자, 가정, 검증 질문, 첫 실험을 정리한다.
+- 최신 사실이나 외부 근거가 필요하지만 로컬 자료가 부족하면 웹 검색으로 확인하거나 필요한 원자료를 사용자에게 요청한다.
+- 사용자가 결과를 Wiki에 반영하도록 명시적으로 요청한 경우에만 관련 문서를 갱신하고, Wiki 구조가 바뀌면 `llm-wiki/wiki/index.md`, `llm-wiki/wiki/log.md`, Graphify를 함께 갱신한다.
 
 ### 자료 ingest 또는 원천 자료 정리를 요청한 경우
 
@@ -166,44 +207,6 @@ wiki ingest 요청 시 PDF 사전 처리:
 - 객체 간 typed relation은 `llm-wiki/wiki/ontology/relations.md`에 저장하고 일반 본문 링크와 구분한다.
 - 원자료 자체는 `sources/`에서 수정하지 않는다. 단, PDF 변환 요청의 결과물은 원본과 구분해 `sources/_generated/`에 새 Markdown 파일로 저장할 수 있다.
 
-### 아이디어, 기획, 전략, 사업화 질문
-
-참고 순서:
-
-1. `graphify-out/GRAPH_REPORT.md`
-2. `llm-wiki/wiki/index.md`
-3. 관련 `concepts/`, `entities/`, `ideas/`, `decisions/`
-4. 필요하면 `graphify query "<아이디어와 관련된 질문>"`
-
-아이디어를 받을 때의 기본 참조 방식:
-
-- 첫 참조 파일은 항상 `graphify-out/GRAPH_REPORT.md`다. 전체 지식 지도를 보고 god node, 많이 연결된 파일, 관련 커뮤니티를 먼저 확인한다.
-- 다음으로 `llm-wiki/wiki/index.md`를 읽어 관련 concept, entity, idea, decision 문서를 찾는다.
-- AI 에이전트 관련 아이디어라면 우선 `llm-wiki/wiki/concepts/enterprise-ai-agent-adoption.md`, `llm-wiki/wiki/concepts/ai-agent-selection-checklist.md`, `llm-wiki/wiki/concepts/ai-agent-market-map.md`를 확인한다.
-- 이미 유사한 아이디어가 있으면 `llm-wiki/wiki/ideas/`의 기존 아이디어 문서를 먼저 읽고, 새 아이디어를 기존 노트와 연결한다.
-- wiki만으로 근거가 부족하거나 출처 확인이 필요하면 `llm-wiki/wiki/sources/`와 `sources/` 원자료를 확인한다.
-
-관련 내용이 없을 때의 처리:
-
-- `GRAPH_REPORT.md`, `index.md`, 관련 wiki 폴더에서 유사 노트를 찾지 못하면 "현재 wiki에는 직접 관련된 기존 문서가 없다"고 명시한다.
-- 이 경우에도 작업을 멈추지 않고 사용자 아이디어 자체를 1차 원문으로 삼아 문제, 대상 사용자, 가정, 검증 질문, 첫 실험을 정리한다.
-- 새 아이디어로 재사용할 가치가 있으면 `llm-wiki/wiki/ideas/`에 새 노트를 만들고, 개념 정리가 필요하면 `llm-wiki/wiki/concepts/`에 새 노트를 만든다.
-- 사실 확인이나 시장/기업 근거가 필요한데 로컬 자료가 없으면 사용자에게 원자료 추가를 요청하거나, 최신 정보가 필요한 경우 웹 검색을 통해 확인한다.
-- 새 노트를 만들거나 wiki 구조가 바뀌면 `llm-wiki/wiki/index.md`, `llm-wiki/wiki/log.md`를 갱신하고 Graphify를 다시 갱신한다.
-
-활용 도구:
-
-- LLM Wiki: 기존 지식과 아이디어를 연결
-- Graphify: 관련 개념, 근거 문서, 기존 아이디어의 연결 관계 확인
-
-성과물 저장:
-
-- 아이디어 노트는 `llm-wiki/wiki/ideas/`에 저장한다.
-- 의사결정이 생기면 `llm-wiki/wiki/decisions/`에 저장한다.
-- 실행 가능한 문서 초안은 `llm-wiki/outputs/docs/`에 저장한다.
-- 발표 자료 초안은 `llm-wiki/outputs/slides/`에 저장한다.
-- 자동화 코드나 Apps Script 산출물은 `llm-wiki/outputs/apps-script/`에 저장한다.
-
 ### 실행계획, PoC, 구현, 자동화 요청
 
 참고 순서:
@@ -221,34 +224,15 @@ wiki ingest 요청 시 PDF 사전 처리:
 
 성과물 저장:
 
-- 설계서, 실행계획, 운영 문서는 `llm-wiki/outputs/docs/`에 저장한다.
-- 코드 산출물은 성격에 따라 `scripts/` 또는 `llm-wiki/outputs/apps-script/`에 저장한다.
+- 설계서, 실행계획, 운영 문서의 기본 저장 위치는 정하지 않는다. 사용자가 위치를 명시한 경우에만 해당 위치에 저장한다.
+- 코드 산출물은 사용자가 지정한 위치를 우선하고, 위치가 필요한데 지정되지 않은 경우에만 확인한다.
 - 작업 결과가 wiki 지식 구조에 영향을 주면 관련 `ideas/`, `decisions/`, `concepts/` 문서를 갱신한다.
-
-### 문서, 보고서, 발표자료 요청
-
-참고 순서:
-
-1. `llm-wiki/wiki/index.md`
-2. 관련 source/concept/entity/idea/decision 문서
-3. Graphify의 핵심 노드와 연결 관계
-
-활용 도구:
-
-- LLM Wiki: 근거 자료와 연결 구조 확보
-- Graphify: 핵심 노드와 문서 간 관계 확인
-- 대상 독자, 목적, 구조, 톤을 먼저 정리한다.
-
-성과물 저장:
-
-- 보고서/제안서/기획서는 `llm-wiki/outputs/docs/`에 저장한다.
-- 발표자료 초안이나 slide outline은 `llm-wiki/outputs/slides/`에 저장한다.
-- 산출물 상단에는 목적, 대상 독자, 사용한 주요 wiki 문서, 작성일을 적는다.
 
 ## 성과물 저장 원칙
 
 - 사용자가 저장 위치를 명시하면 그 위치를 우선한다.
-- 사용자가 위치를 명시하지 않으면 위의 질문 유형별 기본 위치에 저장한다.
+- 사용자가 요청한 문서, 보고서, 발표자료, 아이디어, 실행계획에는 기본 저장 위치를 지정하지 않는다. 저장 위치가 명시되지 않으면 임의의 폴더에 저장하지 않는다.
+- ingest 변환본, Wiki 지식 노트, 온톨로지 관계처럼 시스템 운영상 위치가 정해진 파일만 해당 지침의 기존 경로를 사용한다.
 - `sources/`, `llm-wiki/`, `graphify-out/`의 실제 내용은 개인 작업물로 보고 GitHub에 올리지 않는다. 폴더 구조 유지를 위한 `.gitkeep`만 추적한다.
 - 모든 wiki 문서는 Obsidian에서 탐색하기 쉽게 `[[...]]` 링크를 적극 사용한다.
 - 새 문서를 만들거나 기존 wiki 구조를 바꾸면 `llm-wiki/wiki/index.md`와 `llm-wiki/wiki/log.md`를 갱신한다.
