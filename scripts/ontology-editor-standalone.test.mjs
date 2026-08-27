@@ -91,6 +91,14 @@ test("standalone 저장은 파일 덮어쓰기와 relations.md 다운로드 fall
   assert.match(html, /catch/);
 });
 
+test("새 객체 관계는 확정이 기본이고 검토·제외 의미를 안내한다", () => {
+  const html = renderOntologyEditorHtml({ standalone: true, markdown });
+
+  assert.match(html, /status:\s*["']확정["']/);
+  assert.match(html, /검토[^<]*다른 팀원의 검토가 필요/);
+  assert.match(html, /제외[^<]*맞지 않는 관계[^<]*향후 동일 관계도 제외/);
+});
+
 test("standalone HTML은 외부 스크립트, 모듈, 스타일시트에 의존하지 않는다", () => {
   const html = renderOntologyEditorHtml({ standalone: true, markdown });
 

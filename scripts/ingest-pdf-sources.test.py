@@ -78,7 +78,9 @@ class IngestPdfSourcesTest(unittest.TestCase):
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", content)
         self.assertNotIn("<script>alert(1)</script>", content)
         self.assertIn("C:\\Users\\test", content)
-        self.assertIn("|  |  |  | 검토 |  |  |  |", content)
+        self.assertIn("|  |  |  | 확정 |  |  |  |", content)
+        self.assertIn("검토는 다른 팀원의 검토가 필요한 관계", content)
+        self.assertIn("제외는 맞지 않는 관계이며 향후 동일 관계도 제외", content)
         self.assertEqual(pdf.read_bytes(), original)
 
         before = result.path.read_text(encoding="utf-8")

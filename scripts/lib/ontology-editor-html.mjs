@@ -9,7 +9,7 @@ import {
 const editorScript = String.raw`
 const typeColumns = ["key", "label", "inverse", "scope", "description"];
 const relationColumns = ["id", "source", "relation", "target", "status", "evidence", "location", "note"];
-const statuses = ["검토", "확정", "제외"];
+const statuses = ["확정", "검토", "제외"];
 const columnLabels = {
   key: "유형 ID", label: "표시명", inverse: "역관계", scope: "적용 분류", description: "설명",
   id: "관계 ID", source: "출발 객체", relation: "관계 유형", target: "도착 객체",
@@ -131,7 +131,7 @@ byId("add-relation").addEventListener("click", () => {
   snapshot = {
     ...snapshot,
     relations: [...snapshot.relations, {
-      id: crypto.randomUUID(), source: "", relation: "", target: "", status: "검토",
+      id: crypto.randomUUID(), source: "", relation: "", target: "", status: "확정",
       evidence: "", location: "", note: "",
     }],
   };
@@ -299,7 +299,7 @@ function serialize(value) {
   const normalized = validate(value);
   const typeRows = normalized.relationTypes.map((type) => markdownRow([type.key, type.label, type.inverse, type.scope.join(", "), type.description]));
   const relationRows = normalized.relations.map((relation) => markdownRow([relation.id, relation.source, relation.relation, relation.target, relation.status, relation.evidence, relation.location, relation.note]));
-  return ["# 온톨로지 관계", "", "이 문서는 모든 typed relation의 단일 원본이다. 자동 추출 관계는 \`검토\`, 사용자가 근거와 방향을 확인한 관계는 \`확정\`, 잘못되었거나 사용하지 않을 관계는 \`제외\`로 관리한다. RAG 답변과 관계 추론에는 \`확정\` 관계만 사용한다.", "", "## 관계 유형 카탈로그", "", "| 유형 ID | 표시명 | 역관계 | 적용 분류 | 설명 |", "| --- | --- | --- | --- | --- |", ...typeRows, "", "## 관계 목록", "", "| ID | 출발 객체 | 관계 유형 | 도착 객체 | 상태 | 근거 | 위치 | 메모 |", "| --- | --- | --- | --- | --- | --- | --- | --- |", ...relationRows, ""].join("\n");
+  return ["# 온톨로지 관계", "", "이 문서는 모든 typed relation의 단일 원본이다. 새 관계의 기본 상태는 \`확정\`이다. \`검토\`는 다른 팀원의 검토가 필요한 관계이고, \`제외\`는 맞지 않는 관계이며 향후 동일 관계도 제외한다는 의미다. RAG 답변과 관계 추론에는 \`확정\` 관계만 사용한다.", "", "## 관계 유형 카탈로그", "", "| 유형 ID | 표시명 | 역관계 | 적용 분류 | 설명 |", "| --- | --- | --- | --- | --- |", ...typeRows, "", "## 관계 목록", "", "| ID | 출발 객체 | 관계 유형 | 도착 객체 | 상태 | 근거 | 위치 | 메모 |", "| --- | --- | --- | --- | --- | --- | --- | --- |", ...relationRows, ""].join("\n");
 }
 
 function download(markdown) {
@@ -410,6 +410,8 @@ export function renderOntologyEditorHtml({ standalone = false, markdown = "" } =
   .filters input { min-width: 280px; }
   .delete { color: #9b1c1c; }
   .notice { padding: 10px 12px; border-left: 4px solid #b26a00; background: #fff6df; }
+  .status-guide { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: #f1f6f2; }
+  .status-guide span { display: block; margin: 3px 0; }
   #message { margin-left: 8px; color: #176b38; }
   #message[data-failed="true"] { color: #a31919; }
 </style>
@@ -430,10 +432,15 @@ export function renderOntologyEditorHtml({ standalone = false, markdown = "" } =
   </section>
   <section>
     <h2>객체 관계</h2>
+    <div class="status-guide">
+      <span>확정: 새 관계의 기본 상태이며 RAG 답변과 관계 추론에 사용합니다.</span>
+      <span>검토: 다른 팀원의 검토가 필요하다는 의미입니다.</span>
+      <span>제외: 맞지 않는 관계이며 향후 동일 관계도 제외하라는 의미입니다.</span>
+    </div>
     <div class="filters">
       <input id="relation-search" type="search" aria-label="객체, 관계 유형 또는 근거 검색" placeholder="객체·유형·근거 검색">
       <select id="status-filter" aria-label="관계 상태 필터">
-        <option value="">전체 상태</option><option value="검토">검토</option><option value="확정">확정</option><option value="제외">제외</option>
+        <option value="">전체 상태</option><option value="확정">확정</option><option value="검토">검토</option><option value="제외">제외</option>
       </select>
     </div>
     <table>

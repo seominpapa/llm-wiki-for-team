@@ -2,13 +2,21 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 export const RAG_FLOW = Object.freeze([
-  "GRAPH_REPORT.md",
-  "wiki/index.md",
-  "ontology/relations.md",
-  "decisions/ · concepts/ · entities/",
-  "wiki/sources/",
-  "sources/_generated/",
-  "sources/ 사용자 정의 원본 폴더",
+  {
+    title: "관련 자료 찾기",
+    files: "GRAPH_REPORT.md → wiki/index.md",
+    description: "전체 지식지도에서 질문과 관련된 문서를 찾습니다.",
+  },
+  {
+    title: "확정된 지식 확인",
+    files: "ontology/relations.md → decisions/ · concepts/ · entities/",
+    description: "확정 관계와 정리된 결정·개념·객체를 확인합니다.",
+  },
+  {
+    title: "원문 근거 확인",
+    files: "wiki/sources/ → sources/_generated/ → sources/업무별 원본",
+    description: "요약부터 읽고 필요한 경우에만 원본까지 내려가 페이지·수치·문구를 확인합니다.",
+  },
 ]);
 
 export const SOURCE_CATEGORY_DESCRIPTIONS = Object.freeze({});
@@ -203,7 +211,7 @@ export function renderKnowledgeDashboardHtml(snapshot) {
   const ragFlow = snapshot.rag_flow
     .map(
       (stage, index) =>
-        `<li><span>${String(index + 1).padStart(2, "0")}</span><code>${escapeHtml(stage)}</code></li>`,
+        `<li><span>${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeHtml(stage.title)}</strong><code>${escapeHtml(stage.files)}</code><p>${escapeHtml(stage.description)}</p></div></li>`,
     )
     .join("");
   const counts = snapshot.ontology.status_counts;
@@ -254,17 +262,20 @@ export function renderKnowledgeDashboardHtml(snapshot) {
   .ontology-counts { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
   .ontology-counts div { padding:18px; border-radius:12px; background:#f7faf7; }
   .ontology-counts strong { display:block; margin-top:5px; font-size:24px; }
-  .flow { display:flex; flex-wrap:wrap; gap:8px; padding:0; list-style:none; counter-reset:item; }
-  .flow li { display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid var(--line); border-radius:999px; background:#f8faf7; }
-  .flow li:not(:last-child)::after { content:"→"; margin-left:6px; color:var(--green); }
-  .flow span { display:grid; width:24px; height:24px; place-items:center; border-radius:50%; color:#fff; background:var(--green); font-size:11px; }
+  .flow-intro { margin:-6px 0 16px; color:var(--muted); }
+  .flow { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding:0; list-style:none; }
+  .flow li { display:flex; align-items:flex-start; gap:10px; padding:16px; border:1px solid var(--line); border-radius:12px; background:#f8faf7; }
+  .flow span { display:grid; flex:0 0 28px; width:28px; height:28px; place-items:center; border-radius:50%; color:#fff; background:var(--green); font-size:11px; }
+  .flow strong,.flow code { display:block; }
+  .flow code { margin:6px 0; color:var(--green); line-height:1.5; white-space:normal; }
+  .flow p { margin:0; color:var(--muted); font-size:13px; line-height:1.5; }
   code { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:12px; }
   .editor-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:14px; }
   .editor-head p { margin:4px 0 0; color:var(--muted); }
   .sync-notice { margin:0 0 14px; padding:12px 14px; border:1px solid #ecd49b; border-radius:10px; color:#6f4e00; background:#fff8e5; font-weight:700; }
   a { color:var(--green); font-weight:800; }
   iframe { width:100%; height:72vh; min-height:560px; border:1px solid var(--line); border-radius:12px; background:#fff; }
-  @media (max-width:800px) { .metrics { grid-template-columns:repeat(2,1fr); } .source-grid { grid-template-columns:1fr; } .flow { display:grid; } .flow li::after { display:none; } }
+  @media (max-width:800px) { .metrics { grid-template-columns:repeat(2,1fr); } .source-grid,.flow { grid-template-columns:1fr; } }
   @media (max-width:480px) { .metrics { grid-template-columns:1fr; } .ontology-counts { grid-template-columns:1fr; } .editor-head { align-items:flex-start; flex-direction:column; } iframe { min-height:480px; } }
 </style>
 </head>
@@ -286,7 +297,7 @@ export function renderKnowledgeDashboardHtml(snapshot) {
     <section class="panel"><h2>온톨로지 상태</h2><div class="ontology-counts">
       <div><span>검토</span><strong>${counts["검토"]}</strong></div><div><span>확정</span><strong>${counts["확정"]}</strong></div><div><span>제외</span><strong>${counts["제외"]}</strong></div>
     </div></section>
-    <section class="panel"><h2>RAG 읽기 흐름</h2><ol class="flow">${ragFlow}</ol></section>
+    <section class="panel"><h2>RAG 읽기 흐름</h2><p class="flow-intro">모든 파일을 한꺼번에 읽지 않고, 질문에 필요한 범위까지만 순서대로 읽습니다.</p><ol class="flow">${ragFlow}</ol></section>
   </section>
   <section id="ontology-panel" role="tabpanel" aria-labelledby="ontology-tab" hidden>
     <div class="panel"><div class="editor-head"><div><h2>온톨로지 관계 편집기</h2><p>편집기를 새 화면으로 열거나 아래에서 바로 사용하세요.</p></div><a href="ontology-editor.html">새 화면으로 열기 ↗</a></div><p class="sync-notice">공유 폴더에서 동시에 편집하지 마세요. 저장하기 전에 최신 파일이나 페이지를 다시 연 뒤 변경하세요.</p><iframe src="ontology-editor.html" title="온톨로지 관계 편집기"></iframe></div>

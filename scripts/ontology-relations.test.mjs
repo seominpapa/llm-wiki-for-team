@@ -93,6 +93,9 @@ test("escaped pipe를 손실 없이 Markdown과 객체 사이에서 왕복한다
   assert.match(serialized, /\[\[광산안전법\\\|광산안전법 원문\]\]/);
   assert.match(serialized, /제5조 \\\| 별표 1/);
   assert.deepEqual(parseOntologyMarkdown(serialized), { relationTypes, relations });
+  assert.match(serialized, /새 관계의 기본 상태는 `확정`/);
+  assert.match(serialized, /`검토`는 다른 팀원의 검토가 필요/);
+  assert.match(serialized, /`제외`는 맞지 않는 관계이며 향후 동일 관계도 제외/);
 });
 
 test("상태는 검토·확정·제외만 허용한다", () => {

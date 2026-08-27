@@ -49,7 +49,7 @@ wiki_status: unprocessed
 
 <!--
 관계 후보는 아래 표에 기록한 뒤 ingest 시 llm-wiki/wiki/ontology/relations.md에 합친다.
-자동 추출 관계의 상태는 항상 `검토`로 시작한다. 사용자가 근거와 방향을 확인한 경우에만 `확정`으로 바꾼다.
+새 관계의 기본 상태는 확정이다. 검토는 다른 팀원의 검토가 필요한 관계이고, 제외는 맞지 않는 관계이며 향후 동일 관계도 제외한다는 의미다.
 법률 자료는 delegates_to, implements, amends, repeals, exception_to, requires,
 prohibits, permits, applies_to, references 등을 우선 검토한다. 그 밖의 자료는 관계 유형
 카탈로그에서 의미가 가장 정확한 유형을 사용하고, 없으면 카탈로그에 유형을 먼저 추가한다.
@@ -58,7 +58,7 @@ prohibits, permits, applies_to, references 등을 우선 검토한다. 그 밖�
 
 | ID | 출발 객체 | 관계 유형 | 도착 객체 | 상태 | 근거 | 위치 | 메모 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-|  |  |  |  | 검토 |  |  |  |
+|  |  |  |  | 확정 |  |  |  |
 
 ## 추출 메모
 

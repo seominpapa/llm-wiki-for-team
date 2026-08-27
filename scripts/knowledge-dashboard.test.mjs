@@ -225,20 +225,31 @@ ingested: false
   assertVisibleMetric(text, "제외", 1);
 
   const ragStages = [
-    "GRAPH_REPORT.md",
-    "wiki/index.md",
-    "ontology/relations.md",
-    "decisions/ · concepts/ · entities/",
-    "wiki/sources/",
-    "sources/_generated/",
-    "sources/ 사용자 정의 원본 폴더",
+    {
+      title: "관련 자료 찾기",
+      files: "GRAPH_REPORT.md → wiki/index.md",
+      description: "전체 지식지도에서 질문과 관련된 문서를 찾습니다.",
+    },
+    {
+      title: "확정된 지식 확인",
+      files: "ontology/relations.md → decisions/ · concepts/ · entities/",
+      description: "확정 관계와 정리된 결정·개념·객체를 확인합니다.",
+    },
+    {
+      title: "원문 근거 확인",
+      files: "wiki/sources/ → sources/_generated/ → sources/업무별 원본",
+      description: "요약부터 읽고 필요한 경우에만 원본까지 내려가 페이지·수치·문구를 확인합니다.",
+    },
   ];
   assert.deepEqual(data.rag_flow, ragStages);
   assert.match(html, /RAG 읽기 흐름/);
+  assert.match(text, /질문에 필요한 범위까지만 순서대로 읽습니다/);
   let previousStageIndex = -1;
   for (const stage of ragStages) {
-    const stageIndex = html.indexOf(stage);
-    assert.ok(stageIndex > previousStageIndex, `RAG stage must be visible in order: ${stage}`);
+    const stageIndex = html.indexOf(stage.title);
+    assert.ok(stageIndex > previousStageIndex, `RAG stage must be visible in order: ${stage.title}`);
+    assert.match(text, new RegExp(escapeRegExp(stage.files)));
+    assert.match(text, new RegExp(escapeRegExp(stage.description)));
     previousStageIndex = stageIndex;
   }
 
