@@ -81,6 +81,14 @@ class IngestPdfSourcesTest(unittest.TestCase):
         self.assertIn("|  |  |  | 확정 |  |  |  |", content)
         self.assertIn("검토는 다른 팀원의 검토가 필요한 관계", content)
         self.assertIn("제외는 맞지 않는 관계이며 향후 동일 관계도 제외", content)
+        self.assertIn("- VLM 분석 페이지: 2", content)
+        self.assertIn("- VLM 모델: 미실행", content)
+        self.assertIn(
+            "- VLM 분석 결과 및 불확실성: 텍스트 추출 불가 페이지는 클라우드 VLM 분석이 필요함",
+            content,
+        )
+        self.assertIn("- 원문 시각 재확인 필요 사항:", content)
+        self.assertNotIn("OCR 또는 표/도면 재확인 필요 사항", content)
         self.assertEqual(pdf.read_bytes(), original)
 
         before = result.path.read_text(encoding="utf-8")
@@ -93,6 +101,23 @@ class IngestPdfSourcesTest(unittest.TestCase):
         )
         self.assertEqual(repeated.status, "skipped")
         self.assertEqual(result.path.read_text(encoding="utf-8"), before)
+
+    def test_marks_image_only_pdf_for_vlm_analysis(self):
+        pdf = self.guides / "이미지 문서.pdf"
+        pdf.write_bytes(b"pdf")
+        FakeReader.pages = [None]
+
+        result = self.module.convert_pdf(
+            pdf,
+            source_root=self.sources,
+            output_dir=self.output,
+            reader_class=FakeReader,
+            converted_date="2026-08-27",
+        )
+        content = result.path.read_text(encoding="utf-8")
+
+        self.assertIn("- 텍스트 추출 상태: `VLM 분석 필요`", content)
+        self.assertIn("- VLM 분석 페이지: 1", content)
 
     def test_existing_source_metadata_prevents_duplicate_output(self):
         pdf = self.guides / "발파 안전지침.pdf"

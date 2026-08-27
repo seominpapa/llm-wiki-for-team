@@ -232,7 +232,7 @@ def markdown_document(
     elif pages and len(missing_pages) < len(pages):
         extraction_status = "부분"
     else:
-        extraction_status = "OCR 필요"
+        extraction_status = "VLM 분석 필요"
     page_body = []
     for number, text in enumerate(pages, start=1):
         page_body.append("<!-- page: {} -->\n\n{}".format(number, text or "[텍스트 추출 불가]"))
@@ -266,8 +266,15 @@ def markdown_document(
         "페이지 수": str(len(pages)),
         "텍스트 추출 상태": "`{}`".format(extraction_status),
         "누락/판독 불가 페이지": missing_text,
-        "OCR 또는 표/도면 재확인 필요 사항": (
-            "텍스트 추출 불가 페이지 재확인 필요" if missing_pages else "없음"
+        "VLM 분석 페이지": missing_text,
+        "VLM 모델": "미실행",
+        "VLM 분석 결과 및 불확실성": (
+            "텍스트 추출 불가 페이지는 클라우드 VLM 분석이 필요함"
+            if missing_pages else "해당 없음"
+        ),
+        "원문 시각 재확인 필요 사항": (
+            "표·도면·이미지는 VLM 분석 후 필요 시 원 PDF와 대조"
+            if pages else "해당 없음"
         ),
         "중복 또는 대체 문서": "확인 불가",
         "기타": "pypdf 텍스트 추출을 사용함; raw HTML 이스케이프 적용",
