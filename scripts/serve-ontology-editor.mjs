@@ -176,6 +176,7 @@ export function createOntologyServer({ root, rebuild = () => defaultRebuild(root
   const resolvedRoot = path.resolve(root);
   const relationsFile = path.join(resolvedRoot, RELATIONS_PATH);
   const dashboardFile = path.join(resolvedRoot, "지식관리-대시보드.html");
+  const graphFile = path.join(resolvedRoot, "graphify-out", "graph.html");
 
   return createServer(async (request, response) => {
     try {
@@ -205,6 +206,14 @@ export function createOntologyServer({ root, rebuild = () => defaultRebuild(root
       if (request.method === "GET" && url.pathname === "/dashboard") {
         send(response, 200, await readFile(dashboardFile, "utf8"), {
           "content-type": "text/html; charset=utf-8",
+        });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/graphify-out/graph.html") {
+        send(response, 200, await readFile(graphFile, "utf8"), {
+          "content-type": "text/html; charset=utf-8",
+          "x-frame-options": "SAMEORIGIN",
         });
         return;
       }

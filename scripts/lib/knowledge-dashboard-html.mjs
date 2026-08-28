@@ -187,7 +187,7 @@ const safeJson = (value) =>
 
 export const formatMegabytes = (byteSize) => `${(byteSize / 1_000_000).toFixed(2)} MB`;
 
-export function renderKnowledgeDashboardHtml(snapshot) {
+export function renderKnowledgeDashboardHtml(snapshot, graphHtml = "") {
   const categoryCards = snapshot.sources.categories
     .map(
       ({ name, file_count: fileCount, byte_size: byteSize, completed_count: completedCount, pending_count: pendingCount, files }) => `
@@ -215,6 +215,7 @@ export function renderKnowledgeDashboardHtml(snapshot) {
     )
     .join("");
   const counts = snapshot.ontology.status_counts;
+  const graphSrcdoc = graphHtml ? ` srcdoc="${escapeHtml(graphHtml)}"` : "";
 
   return `<!doctype html>
 <html lang="ko">
@@ -284,6 +285,7 @@ export function renderKnowledgeDashboardHtml(snapshot) {
 <nav role="tablist" aria-label="대시보드 탭">
   <button class="tab" type="button" role="tab" id="status-tab" aria-controls="status-panel" aria-selected="true" tabindex="0">지식현황</button>
   <button class="tab" type="button" role="tab" id="ontology-tab" aria-controls="ontology-panel" aria-selected="false" tabindex="-1">온톨로지 편집</button>
+  <button class="tab" type="button" role="tab" id="graph-tab" aria-controls="graph-panel" aria-selected="false" tabindex="-1">지식 그래프</button>
 </nav>
 <main>
   <section id="status-panel" role="tabpanel" aria-labelledby="status-tab">
@@ -301,6 +303,9 @@ export function renderKnowledgeDashboardHtml(snapshot) {
   </section>
   <section id="ontology-panel" role="tabpanel" aria-labelledby="ontology-tab" hidden>
     <div class="panel"><div class="editor-head"><div><h2>온톨로지 관계 편집기</h2><p>편집기를 새 화면으로 열거나 아래에서 바로 사용하세요.</p></div><a href="ontology-editor.html">새 화면으로 열기 ↗</a></div><p class="sync-notice">공유 폴더에서 동시에 편집하지 마세요. 저장하기 전에 최신 파일이나 페이지를 다시 연 뒤 변경하세요.</p><iframe src="ontology-editor.html" title="온톨로지 관계 편집기"></iframe></div>
+  </section>
+  <section id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" hidden>
+    <div class="panel"><div class="editor-head"><div><h2>지식 그래프</h2><p>Wiki 문서와 확정 관계의 연결 구조를 탐색하세요.</p></div><a href="graphify-out/graph.html">새 화면으로 열기 ↗</a></div><iframe src="graphify-out/graph.html"${graphSrcdoc} title="지식 그래프" loading="lazy"></iframe></div>
   </section>
 </main>
 <script type="application/json" id="knowledge-dashboard-data">${safeJson(snapshot)}</script>

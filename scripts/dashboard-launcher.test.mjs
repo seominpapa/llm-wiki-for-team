@@ -85,6 +85,9 @@ test("server exposes the generated dashboard and server-mode editor without repl
   );
   const dashboardFixture = "<!doctype html><html><body><h1>지식관리 대시보드 fixture</h1></body></html>";
   await writeFile(path.join(root, "지식관리-대시보드.html"), dashboardFixture, "utf8");
+  const graphFixture = "<!doctype html><html><body><h1>지식 그래프 fixture</h1></body></html>";
+  await mkdir(path.join(root, "graphify-out"), { recursive: true });
+  await writeFile(path.join(root, "graphify-out", "graph.html"), graphFixture, "utf8");
 
   server = createOntologyServer({ root, rebuild: async () => ({ exitCode: 0 }) });
   await new Promise((resolve, reject) => {
@@ -95,8 +98,9 @@ test("server exposes the generated dashboard and server-mode editor without repl
   assert.ok(address && typeof address === "object");
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
-  const [dashboard, editorAlias, rootEditor, relations, health] = await Promise.all([
+  const [dashboard, graph, editorAlias, rootEditor, relations, health] = await Promise.all([
     fetch(`${baseUrl}/dashboard`),
+    fetch(`${baseUrl}/graphify-out/graph.html`),
     fetch(`${baseUrl}/ontology-editor.html`),
     fetch(`${baseUrl}/`),
     fetch(`${baseUrl}/api/relations`),
@@ -111,6 +115,10 @@ test("server exposes the generated dashboard and server-mode editor without repl
   assert.equal(dashboard.status, 200);
   assert.match(dashboard.headers.get("content-type") ?? "", /text\/html/);
   assert.equal(dashboardHtml, dashboardFixture);
+  assert.equal(graph.status, 200);
+  assert.match(graph.headers.get("content-type") ?? "", /text\/html/);
+  assert.equal(graph.headers.get("x-frame-options"), "SAMEORIGIN");
+  assert.equal(await graph.text(), graphFixture);
   assert.equal(editorAlias.status, 200);
   assert.match(editorAlias.headers.get("content-type") ?? "", /text\/html/);
   assert.equal(editorAlias.headers.get("x-frame-options"), "SAMEORIGIN");

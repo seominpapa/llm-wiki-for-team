@@ -802,7 +802,7 @@ const dashboardSnapshot = await createKnowledgeDashboardSnapshot({
 });
 await writeFile(
   path.join(root, "지식관리-대시보드.html"),
-  renderKnowledgeDashboardHtml(dashboardSnapshot),
+  renderKnowledgeDashboardHtml(dashboardSnapshot, html),
 );
 await writeFile(path.join(outDir, "GRAPH_REPORT.md"), report);
 

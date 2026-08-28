@@ -255,6 +255,10 @@ ingested: false
 
   assert.match(html, /<a\b[^>]*href=["']ontology-editor\.html["'][^>]*>/i);
   assert.match(html, /<iframe\b[^>]*src=["']ontology-editor\.html["'][^>]*>/i);
+  assert.match(html, /role=["']tab["'][^>]*aria-controls=["']graph-panel["'][^>]*>지식 그래프<\/button>/i);
+  assert.match(html, /<a\b[^>]*href=["']graphify-out\/graph\.html["'][^>]*>/i);
+  assert.match(html, /<iframe\b[^>]*src=["']graphify-out\/graph\.html["'][^>]*>/i);
+  assert.match(html, /<iframe\b[^>]*\bsrcdoc="[^"]*&lt;title&gt;LLM 위키 지식 그래프&lt;\/title&gt;/i);
   assert.doesNotMatch(html, /<script\b[^>]*\bsrc\s*=/i);
   assert.doesNotMatch(html, /<link\b[^>]*\brel=["']stylesheet["']/i);
   assert.doesNotMatch(html, /<(?:script|link)\b[^>]*(?:src|href)=["']https?:\/\//i);
