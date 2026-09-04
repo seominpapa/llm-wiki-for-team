@@ -38,6 +38,7 @@ const relations = [
     relation: "delegates_to",
     target: "[[광산안전법 시행령]]",
     status: "확정",
+    evidenceDocument: "",
     evidence: "광산안전법",
     location: "제5조",
     note: "",
@@ -124,6 +125,7 @@ test("PUT /api/relations saves relation types and relations, then rebuilds the g
       relation: "applies_to",
       target: "[[시험발파]]",
       status: "검토",
+      evidenceDocument: "[[발파 표준안전 작업지침]]",
       evidence: "작업지침 원문",
       location: "3장",
       note: "현장 적용 범위 확인 필요",
@@ -147,6 +149,7 @@ test("PUT /api/relations saves relation types and relations, then rebuilds the g
     "utf8",
   );
   assert.match(saved, /\| applies_to \| 적용된다 \| has_applicable_rule \| 공통 \|/);
+  assert.match(saved, /근거 문서 \| 근거 내용 \| 근거 위치/);
   assert.match(
     saved,
     /\| rel-002 \| \[\[발파 표준안전 작업지침\]\] \| applies_to \| \[\[시험발파\]\] \| 검토 \|/,
@@ -196,7 +199,11 @@ test("GET / serves an editable table with a save button", async () => {
   assert.match(html, /result\.saved === true.*result\.etag/s);
 });
 
-test("그래프 재생성 실패 시 relations.md를 원본으로 되돌린다", async () => {
+test("그래프 재생성 실패 시 relations.md와 생성 파일을 모두 되돌린다", async () => {
+  const graphPath = path.join(root, "graphify-out", "graph.json");
+  const dashboardPath = path.join(root, "지식관리-대시보드.html");
+  await mkdir(path.dirname(graphPath), { recursive: true });
+  await writeFile(graphPath, "old graph", "utf8");
   await new Promise((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve())),
   );
@@ -204,6 +211,8 @@ test("그래프 재생성 실패 시 relations.md를 원본으로 되돌린다",
     root,
     rebuild: async () => {
       rebuildCalls += 1;
+      await writeFile(graphPath, "partial graph", "utf8");
+      await writeFile(dashboardPath, "partial dashboard", "utf8");
       throw new Error("graph failed");
     },
   });
@@ -242,4 +251,6 @@ test("그래프 재생성 실패 시 relations.md를 원본으로 되돌린다",
     await readFile(path.join(root, "llm-wiki", "wiki", "ontology", "relations.md"), "utf8"),
     initialMarkdown,
   );
+  assert.equal(await readFile(graphPath, "utf8"), "old graph");
+  await assert.rejects(() => readFile(dashboardPath, "utf8"), /ENOENT/);
 });

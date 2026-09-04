@@ -144,6 +144,24 @@ async function atomicWrite(filePath, content) {
   }
 }
 
+async function snapshotFiles(filePaths) {
+  return Promise.all(filePaths.map(async (filePath) => {
+    try {
+      return { filePath, content: await readFile(filePath, "utf8") };
+    } catch (error) {
+      if (error?.code === "ENOENT") return { filePath, content: null };
+      throw error;
+    }
+  }));
+}
+
+async function restoreFiles(snapshot) {
+  for (const { filePath, content } of snapshot) {
+    if (content === null) await rm(filePath, { force: true });
+    else await atomicWrite(filePath, content);
+  }
+}
+
 async function ensureRelationsFile(filePath) {
   await mkdir(path.dirname(filePath), { recursive: true });
   try {
@@ -177,6 +195,14 @@ export function createOntologyServer({ root, rebuild = () => defaultRebuild(root
   const relationsFile = path.join(resolvedRoot, RELATIONS_PATH);
   const dashboardFile = path.join(resolvedRoot, "지식관리-대시보드.html");
   const graphFile = path.join(resolvedRoot, "graphify-out", "graph.html");
+  const generatedFiles = [
+    path.join(resolvedRoot, "llm-wiki", "wiki", "index.md"),
+    path.join(resolvedRoot, "graphify-out", "graph.json"),
+    graphFile,
+    path.join(resolvedRoot, "graphify-out", "GRAPH_REPORT.md"),
+    path.join(resolvedRoot, "ontology-editor.html"),
+    dashboardFile,
+  ];
 
   return createServer(async (request, response) => {
     try {
@@ -277,6 +303,7 @@ export function createOntologyServer({ root, rebuild = () => defaultRebuild(root
         return;
       }
 
+      const generatedSnapshot = await snapshotFiles(generatedFiles);
       await atomicWrite(relationsFile, nextMarkdown);
       const etag = etagFor(nextMarkdown);
       try {
@@ -285,17 +312,18 @@ export function createOntologyServer({ root, rebuild = () => defaultRebuild(root
       } catch (error) {
         try {
           await atomicWrite(relationsFile, currentMarkdown);
+          await restoreFiles(generatedSnapshot);
           send(
             response,
             500,
-            { saved: false, etag: currentEtag, error: `그래프 생성에 실패해 relations.md 변경을 되돌렸습니다: ${error instanceof Error ? error.message : String(error)}` },
+            { saved: false, etag: currentEtag, error: `그래프 생성에 실패해 relations.md와 생성 파일을 되돌렸습니다: ${error instanceof Error ? error.message : String(error)}` },
             { etag: currentEtag },
           );
         } catch (rollbackError) {
           send(
             response,
             500,
-            { saved: true, etag, error: `그래프 생성과 relations.md 원복에 실패했습니다: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}` },
+            { saved: true, etag, error: `그래프 생성과 전체 원복에 실패했습니다: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}` },
             { etag },
           );
         }

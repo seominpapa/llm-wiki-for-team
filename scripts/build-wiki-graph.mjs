@@ -11,6 +11,7 @@ import {
   DEFAULT_RELATION_TYPES,
   parseOntologyMarkdown,
   serializeOntology,
+  strictRagRelations,
   validateRelations,
   validateSourceCategoryCoverage,
 } from "./lib/ontology-relations.mjs";
@@ -55,10 +56,45 @@ const titleFrom = (text, filePath) => {
 const sectionTitles = (text) =>
   [...text.matchAll(/^##\s+(.+)$/gm)].map((match) => match[1].trim());
 
+const frontmatterValue = (text, key) => {
+  const frontmatter = text.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!frontmatter) return "";
+  const match = frontmatter[1].match(new RegExp(`^${key}:\\s*["']?(.+?)["']?\\s*$`, "m"));
+  return match?.[1]?.trim() ?? "";
+};
+
+const frontmatterAliases = (text) => {
+  const frontmatter = text.match(/^---\s*\n([\s\S]*?)\n---/)?.[1];
+  if (!frontmatter) return [];
+  const lines = frontmatter.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^aliases\s*:/.test(line));
+  if (start < 0) return [];
+  const inline = lines[start].replace(/^aliases\s*:\s*/, "").trim();
+  const unquote = (value) => value.trim().replace(/^["']|["']$/g, "");
+  if (inline.startsWith("[") && inline.endsWith("]")) {
+    return inline.slice(1, -1).split(",").map(unquote).filter(Boolean);
+  }
+  const aliases = [];
+  for (const line of lines.slice(start + 1)) {
+    const match = line.match(/^\s+-\s+(.+)$/);
+    if (!match) break;
+    aliases.push(unquote(match[1]));
+  }
+  return aliases;
+};
+
 const wikiLinks = (text) =>
   [...text.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g)].map((match) =>
     match[1].trim(),
   );
+
+const navigationalMarkdown = (text) => {
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^##\s+온톨로지 관계 후보\s*$/.test(line.trim()));
+  if (start < 0) return text;
+  const next = lines.findIndex((line, index) => index > start && /^##\s+/.test(line.trim()));
+  return [...lines.slice(0, start), ...lines.slice(next < 0 ? lines.length : next)].join("\n");
+};
 
 const sourceRefs = (text) =>
   [...text.matchAll(/`(sources\/[^`]+\.md)`/g)].map((match) => match[1].trim());
@@ -87,6 +123,7 @@ function parseShorthandOntology(markdown) {
   const parsedRelations = dataRows.map((relation, index) => ({
     id: `shorthand-${index + 1}`,
     ...relation,
+    evidenceDocument: "",
     location: "",
   }));
   const relationTypes = [...new Set(parsedRelations.map(({ relation }) => relation))].map(
@@ -177,7 +214,9 @@ for (const filePath of files) {
     path: relativePath,
     exists: true,
     sections: sectionTitles(text),
-    wiki_links: wikiLinks(text),
+    source_category: frontmatterValue(text, "source_category"),
+    aliases: frontmatterAliases(text),
+    wiki_links: wikiLinks(navigationalMarkdown(text)),
     source_refs: sourceRefs(text),
     markdown: text,
   };
@@ -185,14 +224,16 @@ for (const filePath of files) {
   pages.push(page);
   pathToId.set(relativePath.toLowerCase(), id);
 
-  const normalizedTitle = title.toLowerCase();
-  if (!titleToIds.has(normalizedTitle)) titleToIds.set(normalizedTitle, []);
-  titleToIds.get(normalizedTitle).push(id);
+  for (const name of [title, ...page.aliases]) {
+    const normalizedTitle = name.normalize("NFC").toLocaleLowerCase("ko-KR");
+    if (!titleToIds.has(normalizedTitle)) titleToIds.set(normalizedTitle, []);
+    titleToIds.get(normalizedTitle).push(id);
+  }
 }
 
 function relationEndpointIds(value) {
   const reference = wikiLinks(value)[0] ?? value.trim();
-  const titleMatches = titleToIds.get(reference.toLowerCase()) ?? [];
+  const titleMatches = titleToIds.get(reference.normalize("NFC").toLocaleLowerCase("ko-KR")) ?? [];
   if (titleMatches.length > 0) return [...new Set(titleMatches)];
 
   const withoutExtension = reference.replace(/\.md$/i, "");
@@ -204,13 +245,38 @@ function relationEndpointIds(value) {
   return [...new Set(candidates.map((candidate) => pathToId.get(candidate.toLowerCase())).filter(Boolean))];
 }
 
+const pageById = new Map(pages.map((page) => [page.id, page]));
+const canonicalEndpointName = (value) => {
+  const ids = relationEndpointIds(value);
+  if (ids.length === 1) return pageById.get(ids[0])?.title ?? value;
+  return wikiLinks(value)[0] ?? value.trim();
+};
+const endpointKey = (value) => canonicalEndpointName(value).normalize("NFC").toLocaleLowerCase("ko-KR");
+const relationPairs = new Set(
+  relations.map(({ source, target }) => `${endpointKey(source)}\u0000${endpointKey(target)}`),
+);
+const selfWikiLinks = pages.flatMap((page) =>
+  page.wiki_links
+    .filter((link) => endpointKey(page.title) === endpointKey(link))
+    .map((link) => ({ from: page.path, link })),
+);
+const wikiLinksWithoutRelation = pages.flatMap((page) =>
+  page.wiki_links
+    .filter((link) => endpointKey(page.title) !== endpointKey(link))
+    .filter((link) => !relationPairs.has(`${endpointKey(page.title)}\u0000${endpointKey(link)}`))
+    .map((link) => ({ from: page.path, link })),
+);
+const aliasConflicts = [...titleToIds.entries()]
+  .filter(([, ids]) => new Set(ids).size > 1)
+  .map(([alias, ids]) => ({ alias, matches: [...new Set(ids)] }));
+
 const edges = new Map();
 const unresolvedTypedRelations = [];
 const excludedTypedRelations = relations.filter(({ status }) => status === "제외");
 
 for (const page of pages) {
   for (const link of page.wiki_links) {
-    const targets = titleToIds.get(link.toLowerCase()) ?? [];
+    const targets = titleToIds.get(link.normalize("NFC").toLocaleLowerCase("ko-KR")) ?? [];
     if (targets.length === 0) {
       unresolvedLinks.push({
         from: page.path,
@@ -220,9 +286,6 @@ for (const page of pages) {
       continue;
     }
 
-    for (const target of targets) {
-      if (target !== page.id) addEdge(edges, page.id, target, "wiki_link", `[[${link}]]`);
-    }
   }
 
   for (const sourceRef of page.source_refs) {
@@ -265,6 +328,7 @@ for (const relation of relations) {
       id: `ontology:${relation.id}`,
       relation_id: relation.id,
       status: relation.status,
+      evidence_document: relation.evidenceDocument,
       evidence: relation.evidence,
       location: relation.location,
       note: relation.note,
@@ -298,11 +362,16 @@ const graph = {
   ontology: {
     source: "llm-wiki/wiki/ontology/relations.md",
     relation_types: relationTypes,
+    relations,
   },
+  rag_relations: strictRagRelations(relations),
   validation: {
     node_count: pages.length,
     edge_count: edges.size,
     unresolved_wiki_links: unresolvedLinks,
+    self_wiki_links: selfWikiLinks,
+    wiki_links_without_relation: wikiLinksWithoutRelation,
+    alias_conflicts: aliasConflicts,
     unresolved_typed_relations: unresolvedTypedRelations,
     excluded_typed_relations: excludedTypedRelations,
     external_source_refs: externalSourceRefs,
@@ -310,6 +379,37 @@ const graph = {
     excluded_meta_files: excludedFiles,
   },
 };
+
+function renderWikiIndex() {
+  const statusCounts = { "검토": 0, "확정": 0, "제외": 0 };
+  relations.forEach(({ status }) => { statusCounts[status] = (statusCounts[status] ?? 0) + 1; });
+  const groups = new Map();
+  pages.forEach((page) => {
+    const group = page.category === "sources" ? (page.source_category || "분류 없는 source") : page.category;
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push({ title: page.title, aliases: page.aliases });
+  });
+  const sections = [...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, "ko"))
+    .map(([group, titles]) => `## ${group}\n\n${titles.sort((a, b) => a.title.localeCompare(b.title, "ko")).map(({ title, aliases }) => `- [[${title}]]${aliases.length ? ` (\uBCC4칭: ${aliases.join(", ")})` : ""}`).join("\n")}`)
+    .join("\n\n");
+  return `# LLM Wiki 색인
+
+## 현재 상태
+
+- Wiki 콘텐츠 문서: ${pages.length}개
+- source 분류: ${sourceCategories.join(", ") || "없음"}
+- typed relation: ${relations.length}개 (검토 ${statusCounts["검토"]}, 확정 ${statusCounts["확정"]}, 제외 ${statusCounts["제외"]})
+- RAG 관계 추론에는 [[온톨로지 관계]]의 확정 관계만 사용한다.
+
+${sections}
+
+## 운영 문서
+
+- [[온톨로지 관계]]
+- [[작업 로그]]
+`;
+}
 
 const topLinked = graph.nodes
   .map((node) => ({
@@ -341,7 +441,7 @@ const unresolvedTypedList =
         .join("\n");
 
 const typedEdgeCount = graphEdges.filter(({ status }) => status === "확정" || status === "검토").length;
-const wikiLinkEdgeCount = graphEdges.filter(({ type }) => type === "wiki_link").length;
+const bodyWikiLinkCount = pages.reduce((sum, page) => sum + page.wiki_links.length, 0);
 
 const report = `# Graph Report - LLM Wiki File Graph
 
@@ -349,16 +449,21 @@ Generated: ${graph.graph.generated_at}
 Source root: \`${graph.graph.source_root}\`
 
 ## 생성 기준
-\`llm-wiki/\` 아래의 실제 콘텐츠 Markdown 파일만 노드로 표시합니다. \`llm-wiki/AGENTS.md\`, \`llm-wiki/wiki/index.md\`, \`llm-wiki/wiki/log.md\`, raw manifest 같은 운영/목차/메타 파일은 제외합니다. 제목, 섹션, 출처 참조, unresolved wiki link는 메타데이터로만 기록하고 노드로 표시하지 않습니다.
+\`llm-wiki/\` 아래의 실제 콘텐츠 Markdown 파일만 노드로 표시합니다. \`llm-wiki/AGENTS.md\`, \`llm-wiki/wiki/index.md\`, \`llm-wiki/wiki/log.md\`, raw manifest 같은 운영/목차/메타 파일은 제외합니다. 본문 Wiki link는 탐색용으로 보존하고 노드 메타데이터로만 기록합니다. 활성 그래프 엣지는 모두 \`relations.md\`에서 생성합니다.
 
 ## 요약
 - 포함된 콘텐츠 Markdown 파일: ${graph.nodes.length}
 - 제외된 목차/운영/메타 Markdown 파일: ${excludedFiles.length}
-- 문서 간 위키 링크 연결선: ${wikiLinkEdgeCount}
+- 본문 Wiki link 메타데이터: ${bodyWikiLinkCount}
 - 활성 typed relation(검토·확정): ${typedEdgeCount}
+- graph.json에 컴파일한 전체 relation: ${relations.length}
+- 일반 RAG용 확정 relation: ${strictRagRelations(relations).length}
 - 제외된 typed relation: ${excludedTypedRelations.length}
 - 파일이 아닌 노드: 0
 - 그래프에서 생략된 unresolved wiki link: ${unresolvedLinks.length}
+- 관계로 생성하지 않는 자기 탐색 Wiki link: ${selfWikiLinks.length}
+- relations.md 대응이 없는 본문 Wiki link: ${wikiLinksWithoutRelation.length}
+- alias 충돌: ${aliasConflicts.length}
 - 해석되지 않은 typed relation: ${unresolvedTypedRelations.length}
 - 메타데이터로 기록한 외부 source ref: ${externalSourceRefs.length}
 
@@ -423,6 +528,10 @@ const html = `<!doctype html>
   line.is-active { stroke: #2563eb; stroke-opacity: .95; stroke-width: 2.6; }
   line.edge { cursor: pointer; }
   line.edge.is-selected { stroke: #dc2626; stroke-opacity: .95; stroke-width: 3; }
+  line.edge.is-review { stroke-dasharray: 7 5; }
+  line.edge.is-review-hidden { display: none; }
+  .review-toggle { display: flex; align-items: center; gap: 5px; padding: 0 6px; font-size: 12px; white-space: nowrap; }
+  .review-toggle input { width: 16px; height: 16px; }
   marker path { fill: #8f949d; }
   marker.is-active path { fill: #2563eb; }
   marker.is-selected path { fill: #dc2626; }
@@ -436,7 +545,7 @@ const html = `<!doctype html>
 <body>
 <header>
   <h1>LLM 위키 지식 그래프</h1>
-  <p>각 노드는 실제 콘텐츠 Markdown 파일입니다. index.md, log.md 같은 목차/운영 파일은 제외했습니다.</p>
+  <p>각 노드는 실제 콘텐츠 Markdown 파일이고, 모든 연결선은 relations.md의 관계입니다.</p>
 </header>
 <main>
   <div class="graph-wrap">
@@ -445,11 +554,12 @@ const html = `<!doctype html>
       <button id="zoom-in" type="button" title="확대">+</button>
       <button id="zoom-out" type="button" title="축소">-</button>
       <button id="zoom-reset" type="button" title="보기 초기화">1:1</button>
+      <label class="review-toggle"><input id="show-review" type="checkbox"> 검토</label>
     </div>
   </div>
   <aside>
     <div class="stat"><strong>콘텐츠 노드</strong><span>${graph.nodes.length}</span></div>
-    <div class="stat"><strong>위키 링크 연결</strong><span>${wikiLinkEdgeCount}</span></div>
+    <div class="stat"><strong>본문 Wiki link</strong><span>${bodyWikiLinkCount}</span></div>
     <div class="stat"><strong>제외된 메타 파일</strong><span>${excludedFiles.length}</span></div>
     <div class="stat"><strong>미해석 링크</strong><span>${unresolvedLinks.length}</span></div>
     <div class="detail" id="selection-detail">
@@ -572,7 +682,7 @@ function setSelectedNode(nodeId) {
   detail.innerHTML =
     "<strong>" + escapeText(selected.label) + "</strong>" +
     "<span>" + escapeText(selected.path) + "</span>" +
-    "<span>연결 의미: 일반 선은 출발 문서의 [[Page Name]] 위키 링크이고, 유형·상태가 표시된 선은 relations.md에서 관리하는 typed relation입니다.</span>" +
+    "<span>연결 의미: relations.md에서 관리하는 typed relation입니다.</span>" +
     "<span>들어오는 링크: " + incomingEdges.length + "</span>" +
     "<span>나가는 링크: " + outgoingEdges.length + "</span>" +
     "<span>섹션 수: " + selected.section_count + "</span>" +
@@ -604,15 +714,16 @@ function setSelectedEdge(edgeId) {
     "<span>" + escapeText(edge.sourceNode.label) + " → " + escapeText(edge.targetNode.label) + "</span>" +
     "<span>유형: " + escapeText(edge.label || edge.type) + " (" + escapeText(edge.type) + ")</span>" +
     (edge.status ? "<span>상태: " + escapeText(edge.status) + "</span>" : "") +
+    (edge.evidence_document ? "<span>근거 문서: " + escapeText(edge.evidence_document) + "</span>" : "") +
     (edge.evidence ? "<span>근거: " + escapeText(edge.evidence) + "</span>" : "") +
     (edge.location ? "<span>위치: " + escapeText(edge.location) + "</span>" : "") +
-    (edge.note ? "<span>메모: " + escapeText(edge.note) + "</span>" : "") +
-    (!edge.status ? "<span>의미: " + escapeText(edge.sourceNode.path) + " 파일의 " + escapeText(edge.label) + " 위키 링크가 " + escapeText(edge.targetNode.path) + " 파일로 해석됩니다.</span>" : "");
+    (edge.note ? "<span>메모: " + escapeText(edge.note) + "</span>" : "");
 }
 
 const edgeEls = edges.map((edge) => {
   const line = el("line", { "stroke-width": 1.5, "marker-end": "url(#arrow-default)" });
   line.classList.add("edge");
+  if (edge.status === "검토") line.classList.add("is-review", "is-review-hidden");
   const title = el("title");
   title.textContent = edge.sourceNode.label + " → " + edge.targetNode.label + "\\n" + edge.label + (edge.status ? " (" + edge.status + ")" : "");
   line.append(title);
@@ -700,6 +811,11 @@ document.getElementById("zoom-reset").addEventListener("click", () => {
   transform = { x: 0, y: 0, scale: 1 };
   applyTransform();
 });
+document.getElementById("show-review").addEventListener("change", (event) => {
+  edges.forEach((edge, index) => {
+    if (edge.status === "검토") edgeEls[index].classList.toggle("is-review-hidden", !event.target.checked);
+  });
+});
 
 for (const button of listButtons) {
   button.addEventListener("click", () => {
@@ -784,6 +900,7 @@ await Promise.all(
 );
 await writeFile(path.join(outDir, "graph.json"), `${JSON.stringify(graph, null, 2)}\n`);
 await writeFile(path.join(outDir, "graph.html"), html);
+await writeFile(path.join(wikiRoot, "wiki", "index.md"), renderWikiIndex());
 await writeFile(
   path.join(root, "ontology-editor.html"),
   renderOntologyEditorHtml({

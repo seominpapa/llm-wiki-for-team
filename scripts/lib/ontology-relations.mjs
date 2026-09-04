@@ -160,6 +160,20 @@ export const DEFAULT_RELATION_TYPES = Object.freeze(
       description: "자료·제품·제안이 기관, 기준 또는 절차에 의해 평가된다.",
     },
     {
+      key: "describes",
+      label: "다룬다",
+      inverse: "설명된다",
+      scope: ["공통"],
+      description: "문서가 대상을 주요 주제로 설명한다.",
+    },
+    {
+      key: "same_as",
+      label: "같은 대상이다",
+      inverse: "같은 대상이다",
+      scope: ["공통"],
+      description: "두 명칭이 같은 canonical 대상을 가리킨다.",
+    },
+    {
       key: "related_to",
       label: "관련된다",
       inverse: "관련된다",
@@ -244,8 +258,9 @@ export function parseRelations(markdown) {
     relation: requiredCell(row, "관계 유형"),
     target: requiredCell(row, "도착 객체"),
     status: requiredCell(row, "상태"),
-    evidence: row["근거"]?.trim() ?? "",
-    location: row["위치"]?.trim() ?? "",
+    evidenceDocument: row["근거 문서"]?.trim() ?? "",
+    evidence: (row["근거 내용"] ?? row["근거"])?.trim() ?? "",
+    location: (row["근거 위치"] ?? row["위치"])?.trim() ?? "",
     note: row["메모"]?.trim() ?? "",
   }));
 }
@@ -282,10 +297,11 @@ export function validateSourceCategoryCoverage(relationTypes, sourceCategories =
   if (!Array.isArray(sourceCategories)) throw new TypeError("source 분류 목록은 배열이어야 합니다.");
   if (sourceCategories.length === 0) return true;
 
+  const logicalCategory = (category) => category.normalize("NFC").replace(/^\d+\s+/, "").trim();
   const categoryAliases = new Map(
     sourceCategories.flatMap((category) => [
-      [category, category],
-      [category.replace(/^\d+\s+/, ""), category],
+      [category.normalize("NFC"), category],
+      [logicalCategory(category), category],
     ]),
   );
   const covered = new Set();
@@ -296,7 +312,7 @@ export function validateSourceCategoryCoverage(relationTypes, sourceCategories =
         sourceCategories.forEach((category) => covered.add(category));
         continue;
       }
-      const category = categoryAliases.get(item);
+      const category = categoryAliases.get(item.normalize("NFC")) ?? categoryAliases.get(logicalCategory(item));
       if (!category) throw new Error(`미등록 source 분류: ${item}`);
       covered.add(category);
     }
@@ -330,8 +346,10 @@ export function validateRelations(relations, relationTypes = DEFAULT_RELATION_TY
         throw new Error(`관계의 ${field}값이 필요합니다.`);
       }
     }
-    for (const field of ["evidence", "location", "note"]) {
-      if (typeof relation[field] !== "string") throw new Error(`관계의 ${field}값은 문자열이어야 합니다.`);
+    for (const field of ["evidenceDocument", "evidence", "location", "note"]) {
+      if (relation[field] !== undefined && typeof relation[field] !== "string") {
+        throw new Error(`관계의 ${field}값은 문자열이어야 합니다.`);
+      }
     }
     if (!VALID_STATUSES.has(relation.status)) throw new Error(`허용되지 않은 상태: ${relation.status}`);
     if (!registeredTypes.has(relation.relation)) {
@@ -367,8 +385,8 @@ export function serializeOntology({ relationTypes, relations }) {
     tableRow([key, label, inverse, scope.join(", "), description]),
   );
   const relationRows = relations.map(
-    ({ id, source, relation, target, status, evidence, location, note }) =>
-      tableRow([id, source, relation, target, status, evidence, location, note]),
+    ({ id, source, relation, target, status, evidenceDocument = "", evidence, location, note }) =>
+      tableRow([id, source, relation, target, status, evidenceDocument, evidence, location, note]),
   );
 
   return `# 온톨로지 관계
@@ -383,8 +401,8 @@ ${typeRows.join("\n")}
 
 ## 관계 목록
 
-| ID | 출발 객체 | 관계 유형 | 도착 객체 | 상태 | 근거 | 위치 | 메모 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| ID | 출발 객체 | 관계 유형 | 도착 객체 | 상태 | 근거 문서 | 근거 내용 | 근거 위치 | 메모 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 ${relationRows.join("\n")}
 `;
 }

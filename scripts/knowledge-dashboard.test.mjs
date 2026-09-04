@@ -78,6 +78,8 @@ test("graph builder creates a self-contained root knowledge dashboard from works
     const categoryDir = path.join(projectRoot, "sources", directoryName);
     await mkdir(categoryDir, { recursive: true });
     await writeFile(path.join(categoryDir, ".gitkeep"), "", "utf8");
+    await writeFile(path.join(categoryDir, ".DS_Store"), "finder metadata", "utf8");
+    await writeFile(path.join(categoryDir, "Icon\r"), "", "utf8");
     const byteSize = index === 0 ? 1 : 1_000_000;
     await writeFile(path.join(categoryDir, `source-${index + 1}.txt`), "x".repeat(byteSize), "utf8");
     expectedSources.push({
@@ -227,12 +229,12 @@ ingested: false
   const ragStages = [
     {
       title: "관련 자료 찾기",
-      files: "GRAPH_REPORT.md → wiki/index.md",
-      description: "전체 지식지도에서 질문과 관련된 문서를 찾습니다.",
+      files: "graph.json → wiki/sources/ 본문",
+      description: "alias·확정 관계로 관련 source를 찾고 본문 언급을 보완합니다.",
     },
     {
       title: "확정된 지식 확인",
-      files: "ontology/relations.md → decisions/ · concepts/ · entities/",
+      files: "sources/ → decisions/ · concepts/ · entities/",
       description: "확정 관계와 정리된 결정·개념·객체를 확인합니다.",
     },
     {

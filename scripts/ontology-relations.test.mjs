@@ -55,6 +55,7 @@ const relations = [
     relation: "delegates_to",
     target: "[[광산안전법 시행령]]",
     status: "검토",
+    evidenceDocument: "",
     evidence: "위임 규정",
     location: "제5조 | 별표 1",
     note: "법률 | 시행령",
@@ -65,6 +66,7 @@ const relations = [
     relation: "supports",
     target: "[[발파 설계기준]]",
     status: "확정",
+    evidenceDocument: "",
     evidence: "시험 수치가 기준을 충족함",
     location: "32쪽",
     note: "수치 확인 완료",
@@ -75,6 +77,7 @@ const relations = [
     relation: "supports",
     target: "[[HATS 운용 방법]]",
     status: "제외",
+    evidenceDocument: "",
     evidence: "개정본으로 대체됨",
     location: "표지",
     note: "답변에 사용하지 않음",
@@ -96,6 +99,18 @@ test("escaped pipe를 손실 없이 Markdown과 객체 사이에서 왕복한다
   assert.match(serialized, /새 관계의 기본 상태는 `확정`/);
   assert.match(serialized, /`검토`는 다른 팀원의 검토가 필요/);
   assert.match(serialized, /`제외`는 맞지 않는 관계이며 향후 동일 관계도 제외/);
+});
+
+test("근거 문서를 포함한 새 스키마를 읽고 쓰며 기존 8열 형식도 계속 읽는다", () => {
+  const relation = {
+    ...relations[1],
+    evidenceDocument: "[[시험발파 결과보고서]]",
+  };
+  const serialized = serializeOntology({ relationTypes, relations: [relation] });
+
+  assert.match(serialized, /\| ID \| 출발 객체 \| 관계 유형 \| 도착 객체 \| 상태 \| 근거 문서 \| 근거 내용 \| 근거 위치 \| 메모 \|/);
+  assert.deepEqual(parseRelations(serialized), [relation]);
+  assert.equal(parseRelations(ontologyMarkdown)[0].evidenceDocument, "");
 });
 
 test("상태는 검토·확정·제외만 허용한다", () => {
@@ -151,6 +166,9 @@ test("기본 관계 유형 카탈로그는 고정 sources 01~10 분류에 의존
   for (const legalKey of ["delegates_to", "implements", "amends", "repeals", "prohibits", "permits"]) {
     assert.ok(DEFAULT_RELATION_TYPES.some(({ key }) => key === legalKey));
   }
+  for (const commonKey of ["references", "describes", "related_to", "same_as", "uses"]) {
+    assert.ok(DEFAULT_RELATION_TYPES.some(({ key }) => key === commonKey));
+  }
 });
 
 test("source 분류 목록이 없으면 고정 sources 01~10 분류를 강제하지 않는다", () => {
@@ -182,5 +200,14 @@ test("전달된 동적 source 분류 목록은 공통 또는 등록 분류로 �
   assert.throws(
     () => validateSourceCategoryCoverage([{ ...DEFAULT_RELATION_TYPES[0], scope: ["알 수 없음"] }], dynamicCategories),
     /알 수 없음|미등록|unknown/i,
+  );
+});
+
+test("source 분류의 숫자 접두어가 바뀌어도 같은 논리 분류로 판단한다", () => {
+  assert.doesNotThrow(() =>
+    validateSourceCategoryCoverage(
+      [{ ...DEFAULT_RELATION_TYPES[0], scope: ["10 기타"] }],
+      ["11 기타"],
+    ),
   );
 });

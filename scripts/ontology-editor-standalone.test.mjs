@@ -61,6 +61,7 @@ test("standalone 렌더링은 현재 Markdown을 내장하고 API 없이 초기�
       relation: "delegates_to",
       target: "[[광산안전법 시행령]]",
       status: "확정",
+      evidenceDocument: "",
       evidence: "광산안전법",
       location: "제5조",
       note: "",
@@ -97,6 +98,16 @@ test("새 객체 관계는 확정이 기본이고 검토·제외 의미를 안�
   assert.match(html, /status:\s*["']확정["']/);
   assert.match(html, /검토[^<]*다른 팀원의 검토가 필요/);
   assert.match(html, /제외[^<]*맞지 않는 관계[^<]*향후 동일 관계도 제외/);
+});
+
+test("객체 관계는 한국어 표시명으로 선택하고 근거 문서와 문장 미리보기를 보여준다", () => {
+  const html = renderOntologyEditorHtml({ standalone: true, markdown });
+
+  assert.match(html, /relation-type-select/);
+  assert.match(html, /type\.label\s*\+\s*["'] \(["']\s*\+\s*type\.key/);
+  assert.match(html, /근거 문서/);
+  assert.match(html, /relation-preview/);
+  assert.match(html, /relation:\s*[^,]*references/);
 });
 
 test("standalone HTML은 외부 스크립트, 모듈, 스타일시트에 의존하지 않는다", () => {

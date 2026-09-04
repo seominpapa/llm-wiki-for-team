@@ -4,12 +4,12 @@ import path from "node:path";
 export const RAG_FLOW = Object.freeze([
   {
     title: "관련 자료 찾기",
-    files: "GRAPH_REPORT.md → wiki/index.md",
-    description: "전체 지식지도에서 질문과 관련된 문서를 찾습니다.",
+    files: "graph.json → wiki/sources/ 본문",
+    description: "alias·확정 관계로 관련 source를 찾고 본문 언급을 보완합니다.",
   },
   {
     title: "확정된 지식 확인",
-    files: "ontology/relations.md → decisions/ · concepts/ · entities/",
+    files: "sources/ → decisions/ · concepts/ · entities/",
     description: "확정 관계와 정리된 결정·개념·객체를 확인합니다.",
   },
   {
@@ -50,7 +50,7 @@ async function listFiles(directory) {
 
   const files = await Promise.all(
     entries.map(async (entry) => {
-      if (entry.name === ".gitkeep") return [];
+      if ([".gitkeep", ".DS_Store", "Icon\r"].includes(entry.name)) return [];
       const filePath = path.join(directory, entry.name);
       if (entry.isDirectory()) return listFiles(filePath);
       return entry.isFile() ? [filePath] : [];

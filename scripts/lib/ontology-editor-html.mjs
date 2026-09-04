@@ -8,12 +8,12 @@ import {
 
 const editorScript = String.raw`
 const typeColumns = ["key", "label", "inverse", "scope", "description"];
-const relationColumns = ["id", "source", "relation", "target", "status", "evidence", "location", "note"];
+const relationColumns = ["id", "source", "relation", "target", "status", "evidenceDocument", "evidence", "location", "note"];
 const statuses = ["확정", "검토", "제외"];
 const columnLabels = {
   key: "유형 ID", label: "표시명", inverse: "역관계", scope: "적용 분류", description: "설명",
   id: "관계 ID", source: "출발 객체", relation: "관계 유형", target: "도착 객체",
-  status: "상태", evidence: "근거", location: "위치", note: "메모",
+  status: "상태", evidenceDocument: "근거 문서", evidence: "근거 내용", location: "근거 위치", note: "메모",
 };
 let snapshot = { etag: "", relationTypes: [], relations: [] };
 
@@ -48,6 +48,13 @@ function renderTable(bodyId, rows, columns, updateRow, removeRow) {
   rows.forEach((row, rowIndex) => {
     let currentRow = row;
     const tr = document.createElement("tr");
+    let preview;
+    const refreshPreview = () => {
+      if (!preview) return;
+      const type = snapshot.relationTypes.find((item) => item.key === currentRow.relation);
+      const clean = (value) => String(value || "").replace(/^\[\[/, "").replace(/\]\]$/, "").split("|", 1)[0];
+      preview.textContent = clean(currentRow.source) + "는 " + (type?.label || currentRow.relation || "관계를 선택") + " " + clean(currentRow.target) + ".";
+    };
     columns.forEach((column) => {
       const td = document.createElement("td");
       if (column === "status") {
@@ -64,9 +71,28 @@ function renderTable(bodyId, rows, columns, updateRow, removeRow) {
           currentRow = updateRow(currentRow, "status", select.value);
         });
         td.append(select);
+      } else if (column === "relation" && bodyId === "relation-rows") {
+        const select = document.createElement("select");
+        select.className = "relation-type-select";
+        select.setAttribute("aria-label", columnLabel(column, rowIndex));
+        snapshot.relationTypes.forEach((type) => {
+          const option = document.createElement("option");
+          option.value = type.key;
+          option.textContent = type.label + " (" + type.key + ")";
+          option.selected = type.key === row.relation;
+          select.append(option);
+        });
+        select.addEventListener("change", () => {
+          currentRow = updateRow(currentRow, column, select.value);
+          refreshPreview();
+        });
+        preview = document.createElement("small");
+        preview.className = "relation-preview";
+        td.append(select, preview);
       } else {
         td.append(textInput(row[column], columnLabel(column, rowIndex), (value) => {
           currentRow = updateRow(currentRow, column, value);
+          refreshPreview();
         }));
       }
       tr.append(td);
@@ -75,6 +101,7 @@ function renderTable(bodyId, rows, columns, updateRow, removeRow) {
     action.append(removeButton(() => removeRow(rowIndex, currentRow)));
     tr.append(action);
     body.append(tr);
+    refreshPreview();
   });
 }
 
@@ -87,7 +114,7 @@ function visibleRelations() {
   return snapshot.relations.filter((relation) => {
     if (status && relation.status !== status) return false;
     if (!query) return true;
-    return [relation.source, relation.target, relation.relation, relation.evidence]
+    return [relation.source, relation.target, relation.relation, relation.evidenceDocument, relation.evidence]
       .some((value) => String(value).toLocaleLowerCase("ko-KR").includes(query));
   });
 }
@@ -131,8 +158,8 @@ byId("add-relation").addEventListener("click", () => {
   snapshot = {
     ...snapshot,
     relations: [...snapshot.relations, {
-      id: crypto.randomUUID(), source: "", relation: "", target: "", status: "확정",
-      evidence: "", location: "", note: "",
+      id: crypto.randomUUID(), source: "", relation: snapshot.relationTypes.some(({ key }) => key === "references") ? "references" : (snapshot.relationTypes[0]?.key || ""), target: "", status: "확정",
+      evidenceDocument: "", evidence: "", location: "", note: "",
     }],
   };
   render();
@@ -250,8 +277,9 @@ function parseMarkdown(markdown) {
   }));
   const relations = tableRows(markdown, /^##\s+관계 목록\s*$/).map((row) => ({
     id: required(row, "ID"), source: required(row, "출발 객체"), relation: required(row, "관계 유형"),
-    target: required(row, "도착 객체"), status: required(row, "상태"), evidence: String(row["근거"] || "").trim(),
-    location: String(row["위치"] || "").trim(), note: String(row["메모"] || "").trim(),
+    target: required(row, "도착 객체"), status: required(row, "상태"), evidenceDocument: String(row["근거 문서"] || "").trim(),
+    evidence: String(row["근거 내용"] || row["근거"] || "").trim(),
+    location: String(row["근거 위치"] || row["위치"] || "").trim(), note: String(row["메모"] || "").trim(),
   }));
   return validate({ relationTypes, relations });
 }
@@ -276,7 +304,7 @@ function validate(value) {
   const triples = new Set();
   const relations = value.relations.map((relation) => ({
     id: String(relation.id || "").trim(), source: String(relation.source || "").trim(), relation: String(relation.relation || "").trim(),
-    target: String(relation.target || "").trim(), status: String(relation.status || "").trim(), evidence: String(relation.evidence || ""),
+    target: String(relation.target || "").trim(), status: String(relation.status || "").trim(), evidenceDocument: String(relation.evidenceDocument || ""), evidence: String(relation.evidence || ""),
     location: String(relation.location || ""), note: String(relation.note || ""),
   }));
   relations.forEach((relation) => {
@@ -298,8 +326,8 @@ const markdownRow = (values) => "| " + values.map(escapeCell).join(" | ") + " |"
 function serialize(value) {
   const normalized = validate(value);
   const typeRows = normalized.relationTypes.map((type) => markdownRow([type.key, type.label, type.inverse, type.scope.join(", "), type.description]));
-  const relationRows = normalized.relations.map((relation) => markdownRow([relation.id, relation.source, relation.relation, relation.target, relation.status, relation.evidence, relation.location, relation.note]));
-  return ["# 온톨로지 관계", "", "이 문서는 모든 typed relation의 단일 원본이다. 새 관계의 기본 상태는 \`확정\`이다. \`검토\`는 다른 팀원의 검토가 필요한 관계이고, \`제외\`는 맞지 않는 관계이며 향후 동일 관계도 제외한다는 의미다. RAG 답변과 관계 추론에는 \`확정\` 관계만 사용한다.", "", "## 관계 유형 카탈로그", "", "| 유형 ID | 표시명 | 역관계 | 적용 분류 | 설명 |", "| --- | --- | --- | --- | --- |", ...typeRows, "", "## 관계 목록", "", "| ID | 출발 객체 | 관계 유형 | 도착 객체 | 상태 | 근거 | 위치 | 메모 |", "| --- | --- | --- | --- | --- | --- | --- | --- |", ...relationRows, ""].join("\n");
+  const relationRows = normalized.relations.map((relation) => markdownRow([relation.id, relation.source, relation.relation, relation.target, relation.status, relation.evidenceDocument, relation.evidence, relation.location, relation.note]));
+  return ["# 온톨로지 관계", "", "이 문서는 모든 typed relation의 단일 원본이다. 새 관계의 기본 상태는 \`확정\`이다. \`검토\`는 다른 팀원의 검토가 필요한 관계이고, \`제외\`는 맞지 않는 관계이며 향후 동일 관계도 제외한다는 의미다. RAG 답변과 관계 추론에는 \`확정\` 관계만 사용한다.", "", "## 관계 유형 카탈로그", "", "| 유형 ID | 표시명 | 역관계 | 적용 분류 | 설명 |", "| --- | --- | --- | --- | --- |", ...typeRows, "", "## 관계 목록", "", "| ID | 출발 객체 | 관계 유형 | 도착 객체 | 상태 | 근거 문서 | 근거 내용 | 근거 위치 | 메모 |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- |", ...relationRows, ""].join("\n");
 }
 
 function download(markdown) {
@@ -412,6 +440,7 @@ export function renderOntologyEditorHtml({ standalone = false, markdown = "" } =
   .notice { padding: 10px 12px; border-left: 4px solid #b26a00; background: #fff6df; }
   .status-guide { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: #f1f6f2; }
   .status-guide span { display: block; margin: 3px 0; }
+  .relation-preview { display: block; max-width: 260px; margin-top: 5px; color: #666; white-space: normal; }
   #message { margin-left: 8px; color: #176b38; }
   #message[data-failed="true"] { color: #a31919; }
 </style>
@@ -444,7 +473,7 @@ export function renderOntologyEditorHtml({ standalone = false, markdown = "" } =
       </select>
     </div>
     <table>
-      <thead><tr><th>ID</th><th>출발 객체</th><th>관계</th><th>도착 객체</th><th>상태</th><th>근거</th><th>위치</th><th>메모</th><th>작업</th></tr></thead>
+      <thead><tr><th>ID</th><th>출발 객체</th><th>관계</th><th>도착 객체</th><th>상태</th><th>근거 문서</th><th>근거 내용</th><th>근거 위치</th><th>메모</th><th>작업</th></tr></thead>
       <tbody id="relation-rows"></tbody>
     </table>
     <p><button id="add-relation" type="button">관계 추가</button></p>

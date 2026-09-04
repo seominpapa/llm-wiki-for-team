@@ -24,6 +24,7 @@ sources/의 사용자 정의 업무 폴더
 - RAG 관계 추론에는 `확정` 관계만 사용합니다.
 - `검토`는 다른 팀원의 검토가 필요하다는 의미입니다.
 - `제외`는 맞지 않는 관계이며 향후 동일 관계도 제외한다는 의미입니다.
+- Markdown 본문의 `[[...]]` 링크는 탐색용으로 유지하고 그래프 엣지는 `relations.md`에서만 생성합니다.
 
 ## sources 폴더를 업무에 맞게 구성하기
 
@@ -116,6 +117,8 @@ llm-wiki-for-team/
 
 Node.js 자동 설치에는 인터넷 연결과 관리자 승인 또는 UAC 승인이 필요할 수 있습니다. 조직 정책이 설치를 차단하면 [Node.js LTS](https://nodejs.org/)를 수동 설치한 뒤 다시 실행하세요.
 
+배포된 `team-operations-web`은 Google Drive의 기존 `지식관리-대시보드.html`과 `ontology-editor.html`을 표시하는 정적 웹앱입니다. source ingest나 `graph.json` 재생성은 하지 않으므로 최신 관계를 반영하려면 이 프로젝트의 로컬 실행기로 먼저 전체 빌드를 성공시켜야 합니다.
+
 ## PDF 원본 변환
 
 AI agent에 ingest를 요청하면 먼저 원본과 기존 변환본을 비교합니다. 직접 실행할 수도 있습니다.
@@ -165,6 +168,8 @@ python3 -m pip install pypdf
 
 `llm-wiki/wiki/ontology/relations.md`가 관계 유형과 객체 관계의 단일 원본입니다.
 
+source Wiki 문서의 `[[...]]` 링크와 기존 `온톨로지 관계 후보` 표는 사람이 문맥과 이관 이력을 확인하는 용도로 보존합니다. 그래프와 RAG는 이 표를 읽지 않고 `relations.md`만 사용합니다. `relations.md`에서 관계를 삭제해도 source 문서는 역동기화하거나 자동 수정하지 않습니다.
+
 - `확정`: 새 관계의 기본 상태이며 RAG 답변과 관계 추론에 사용하는 관계
 - `검토`: 다른 팀원의 검토가 필요한 관계
 - `제외`: 맞지 않는 관계이며 향후 동일 관계도 제외할 관계
@@ -178,9 +183,9 @@ python3 -m pip install pypdf
 RAG 답변, 문서 생성, 아이디어 검토는 결과 형식은 다르지만 같은 순서로 지식을 확인합니다.
 
 ```text
-1. 찾기       GRAPH_REPORT.md → wiki/index.md
-2. 검증       relations.md → decisions/ · concepts/ · entities/ · ideas/
-3. 근거 확인  wiki/sources/ → sources/_generated/ → sources/<업무 폴더>/ 원본
+1. 찾기       graph.json의 alias·확정 관계 → wiki/sources/ 본문 검색
+2. 검증       관련 source Wiki 문서 → decisions/ · concepts/ · entities/ · ideas/
+3. 근거 확인  sources/_generated/ → sources/<업무 폴더>/ 원본
 ```
 
 한 문장으로 표현하면 다음과 같습니다.
