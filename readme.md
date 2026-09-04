@@ -183,9 +183,9 @@ source Wiki 문서의 `[[...]]` 링크와 기존 `온톨로지 관계 후보` �
 RAG 답변, 문서 생성, 아이디어 검토는 결과 형식은 다르지만 같은 순서로 지식을 확인합니다.
 
 ```text
-1. 찾기       graph.json의 alias·확정 관계 → wiki/sources/ 본문 검색
-2. 검증       관련 source Wiki 문서 → decisions/ · concepts/ · entities/ · ideas/
-3. 근거 확인  sources/_generated/ → sources/<업무 폴더>/ 원본
+1. 찾기       GRAPH_REPORT.md → wiki/index.md
+2. 검증       relations.md → decisions/ · concepts/ · entities/ · ideas/
+3. 근거 확인  wiki/sources/ → sources/_generated/ → sources/<업무 폴더>/ 원본
 ```
 
 한 문장으로 표현하면 다음과 같습니다.

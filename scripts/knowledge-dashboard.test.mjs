@@ -229,13 +229,13 @@ ingested: false
   const ragStages = [
     {
       title: "관련 자료 찾기",
-      files: "graph.json → wiki/sources/ 본문",
-      description: "alias·확정 관계로 관련 source를 찾고 본문 언급을 보완합니다.",
+      files: "GRAPH_REPORT.md → wiki/index.md",
+      description: "그래프 보고서에서 관련 영역을 찾고 색인에서 읽을 문서를 선택합니다.",
     },
     {
-      title: "확정된 지식 확인",
-      files: "sources/ → decisions/ · concepts/ · entities/",
-      description: "확정 관계와 정리된 결정·개념·객체를 확인합니다.",
+      title: "관계와 정리된 지식 검증",
+      files: "relations.md → decisions/ · concepts/ · entities/ · ideas/",
+      description: "확정 관계와 정리된 결정·개념·객체·아이디어를 확인합니다.",
     },
     {
       title: "원문 근거 확인",

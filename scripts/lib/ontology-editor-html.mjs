@@ -6,7 +6,42 @@ import {
   validateSourceCategoryCoverage,
 } from "./ontology-relations.mjs";
 
+export function formatRelationSentence(relation, type = {}) {
+  const clean = (value) => String(value ?? "")
+    .replace(/^\[\[/, "")
+    .replace(/\]\]$/, "")
+    .split("|", 1)[0]
+    .trim();
+  const particle = (value, withBatchim, withoutBatchim) => {
+    const hangul = [...clean(value)].reverse().find((character) => /[가-힣]/.test(character));
+    if (!hangul) return `(${withBatchim})${withoutBatchim}`;
+    return (hangul.charCodeAt(0) - 0xac00) % 28 ? withBatchim : withoutBatchim;
+  };
+  const quote = (value) => `"${clean(value)}"`;
+  const source = clean(relation.source);
+  const target = clean(relation.target);
+  const targetObject = `${quote(target)}${particle(target, "을", "를")}`;
+  const targetWith = `${quote(target)}${particle(target, "과", "와")}`;
+  const subject = (value) => `${quote(value)}${particle(value, "은", "는")}`;
+  const forwardTarget = {
+    applies_to: `${quote(target)}에`,
+    component_of: `${quote(target)}의`,
+    exception_to: `${quote(target)}의`,
+    supports: `${quote(target)}의`,
+    derived_from: `${quote(target)}에서`,
+    calculated_from: `${quote(target)}에서`,
+    compatible_with: targetWith,
+    related_to: targetWith,
+    same_as: targetWith,
+    submitted_to: `${quote(target)}에`,
+    evaluated_by: `${quote(target)}에게`,
+    precedes: `${quote(target)}에`,
+  }[relation.relation] ?? targetObject;
+  return `${subject(source)} ${forwardTarget} ${type.label || relation.relation || "관련된다"}.`;
+}
+
 const editorScript = String.raw`
+${formatRelationSentence.toString()}
 const typeColumns = ["key", "label", "inverse", "scope", "description"];
 const relationColumns = ["id", "source", "relation", "target", "status", "evidenceDocument", "evidence", "location", "note"];
 const statuses = ["확정", "검토", "제외"];
@@ -52,8 +87,7 @@ function renderTable(bodyId, rows, columns, updateRow, removeRow) {
     const refreshPreview = () => {
       if (!preview) return;
       const type = snapshot.relationTypes.find((item) => item.key === currentRow.relation);
-      const clean = (value) => String(value || "").replace(/^\[\[/, "").replace(/\]\]$/, "").split("|", 1)[0];
-      preview.textContent = clean(currentRow.source) + "는 " + (type?.label || currentRow.relation || "관계를 선택") + " " + clean(currentRow.target) + ".";
+      preview.textContent = formatRelationSentence(currentRow, type);
     };
     columns.forEach((column) => {
       const td = document.createElement("td");
@@ -440,7 +474,7 @@ export function renderOntologyEditorHtml({ standalone = false, markdown = "" } =
   .notice { padding: 10px 12px; border-left: 4px solid #b26a00; background: #fff6df; }
   .status-guide { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: #f1f6f2; }
   .status-guide span { display: block; margin: 3px 0; }
-  .relation-preview { display: block; max-width: 260px; margin-top: 5px; color: #666; white-space: normal; }
+  .relation-preview { display: block; max-width: 280px; margin-top: 5px; color: #666; white-space: normal; }
   #message { margin-left: 8px; color: #176b38; }
   #message[data-failed="true"] { color: #a31919; }
 </style>

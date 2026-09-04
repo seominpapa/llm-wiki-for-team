@@ -6,7 +6,10 @@ import {
   discoverSourceCategories,
   renderKnowledgeDashboardHtml,
 } from "./lib/knowledge-dashboard-html.mjs";
-import { renderOntologyEditorHtml } from "./lib/ontology-editor-html.mjs";
+import {
+  formatRelationSentence,
+  renderOntologyEditorHtml,
+} from "./lib/ontology-editor-html.mjs";
 import {
   DEFAULT_RELATION_TYPES,
   parseOntologyMarkdown,
@@ -299,7 +302,7 @@ for (const page of pages) {
   }
 }
 
-const relationTypeLabels = new Map(relationTypes.map(({ key, label }) => [key, label]));
+const relationTypeByKey = new Map(relationTypes.map((type) => [type.key, type]));
 for (const relation of relations) {
   if (relation.status === "제외") continue;
 
@@ -323,7 +326,7 @@ for (const relation of relations) {
     sources[0],
     targets[0],
     relation.relation,
-    relationTypeLabels.get(relation.relation) ?? relation.relation,
+    relationTypeByKey.get(relation.relation)?.label ?? relation.relation,
     {
       id: `ontology:${relation.id}`,
       relation_id: relation.id,
@@ -574,6 +577,7 @@ const html = `<!doctype html>
 <script type="application/json" id="graph-data">${JSON.stringify(graph).replaceAll("<", "\\u003c")}</script>
 <script>
 const data = JSON.parse(document.getElementById("graph-data").textContent);
+${formatRelationSentence.toString()}
 const svg = document.getElementById("graph");
 const width = () => svg.clientWidth || 900;
 const height = () => svg.clientHeight || 650;
@@ -709,9 +713,13 @@ function setSelectedEdge(edgeId) {
   });
 
   if (!edge) return;
+  const sentence = formatRelationSentence(
+    { source: edge.sourceNode.label, relation: edge.type, target: edge.targetNode.label },
+    { label: edge.label || edge.type },
+  );
   detail.innerHTML =
     "<strong>연결</strong>" +
-    "<span>" + escapeText(edge.sourceNode.label) + " → " + escapeText(edge.targetNode.label) + "</span>" +
+    "<span>" + escapeText(sentence) + "</span>" +
     "<span>유형: " + escapeText(edge.label || edge.type) + " (" + escapeText(edge.type) + ")</span>" +
     (edge.status ? "<span>상태: " + escapeText(edge.status) + "</span>" : "") +
     (edge.evidence_document ? "<span>근거 문서: " + escapeText(edge.evidence_document) + "</span>" : "") +

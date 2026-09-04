@@ -102,6 +102,7 @@ test("typed relations are the editable source of active graph edges", async (t) 
   assert.match(report, /본문 Wiki link.*메타데이터/);
   assert.match(graphHtml, /id="show-review"/);
   assert.match(graphHtml, /edge\.status === "검토"/);
+  assert.doesNotMatch(graphHtml, /정방향:|역방향:/);
   assert.match(index, /\[\[광산안전법\]\]/);
   assert.match(index, /별칭: 발파가이드/);
   assert.match(index, /typed relation: 3개 \(검토 1, 확정 1, 제외 1\)/);

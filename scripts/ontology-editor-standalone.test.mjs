@@ -6,7 +6,10 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { renderOntologyEditorHtml } from "./lib/ontology-editor-html.mjs";
+import {
+  formatRelationSentence,
+  renderOntologyEditorHtml,
+} from "./lib/ontology-editor-html.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const markdown = `# 온톨로지 관계
@@ -107,7 +110,22 @@ test("객체 관계는 한국어 표시명으로 선택하고 근거 문서와 �
   assert.match(html, /type\.label\s*\+\s*["'] \(["']\s*\+\s*type\.key/);
   assert.match(html, /근거 문서/);
   assert.match(html, /relation-preview/);
+  assert.doesNotMatch(html, /정방향:|역방향:/);
   assert.match(html, /relation:\s*[^,]*references/);
+});
+
+test("관계 문장은 방향 구분 없이 출발 객체 기준으로 자연스럽게 표현한다", () => {
+  assert.equal(
+    formatRelationSentence(
+      {
+        source: "[[ES 03300.b 총칙(소음)]]",
+        relation: "applies_to",
+        target: "[[환경소음 및 소음·진동 규제기준]]",
+      },
+      { label: "적용된다", inverse: "적용대상으로 둔다" },
+    ),
+    '"ES 03300.b 총칙(소음)"은 "환경소음 및 소음·진동 규제기준"에 적용된다.',
+  );
 });
 
 test("standalone HTML은 외부 스크립트, 모듈, 스타일시트에 의존하지 않는다", () => {
